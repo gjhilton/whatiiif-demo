@@ -10,13 +10,17 @@ import { commit, git, run, templateCopy } from './harness.js';
 
 const read = (path) => readFile(path, 'utf8');
 
-/** A `gh` on the PATH that knows one upstream release, held in `upstream`, and writes what it was asked to `log`. */
-async function fakeGitHub({ upstream, tag, log }) {
+/**
+ * A `gh` on the PATH that knows one upstream release, held in `upstream`, and writes what it was asked to `log`.
+ * With `releaseError`, asking for the latest release fails with that message instead, as the real `gh` does.
+ */
+async function fakeGitHub({ upstream, tag, log, releaseError }) {
   const bin = await tempDir('bin');
+  const releaseView = releaseError ? `echo "${releaseError}" >&2; exit 1` : `echo "${tag}"`;
   const script = `#!/bin/bash
 echo "$*" >> "${log}"
 case "$1 $2" in
-  "release view") echo "${tag}" ;;
+  "release view") ${releaseView} ;;
   "api repos/example/whatiiif/tarball/${tag}") tar -czf - -C "${upstream}/.." --exclude .git --exclude node_modules "$(basename "${upstream}")" ;;
   "pr create") while [ $# -gt 0 ]; do [ "$1" = --body ] && printf '%s' "$2" > "${log}.body"; shift; done ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
@@ -85,4 +89,35 @@ test('a repository already on the latest release is left alone', async () => {
   assert.match(result.stdout, /Already on the latest release/);
   assert.doesNotMatch(await read(log), /pr create|tarball/);
   assert.equal((await git(user, ['branch', '--list', 'whatiiif-update-*'])).stdout, '');
+});
+
+async function userOfTemplate() {
+  const user = await templateCopy();
+  await writeFile(join(user, 'engine/UPSTREAM'), 'example/whatiiif\n');
+  await commit(user, 'Point at upstream');
+  return user;
+}
+
+test('a template that has not published a release yet is left alone, and that is not a failure', async () => {
+  const user = await userOfTemplate();
+  const log = join(await tempDir('gh'), 'calls');
+  // What the real gh says, word for word, when a repository has no releases.
+  const bin = await fakeGitHub({ log, releaseError: 'release not found' });
+  const result = await run('bash', ['engine/ci/update.sh'], { cwd: user, env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: 'someone/their-image' } });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /example\/whatiiif has not published a release yet, so there is nothing to update to\./);
+  assert.doesNotMatch(await read(log), /pr create|tarball/);
+  assert.equal((await git(user, ['branch', '--list', 'whatiiif-update-*'])).stdout, '');
+});
+
+test('when GitHub cannot say what the latest release is, the update fails and passes on why', async () => {
+  const user = await userOfTemplate();
+  const log = join(await tempDir('gh'), 'calls');
+  const bin = await fakeGitHub({ log, releaseError: 'HTTP 502: Bad Gateway (https://api.github.com/repos/example/whatiiif/releases/latest)' });
+  const result = await run('bash', ['engine/ci/update.sh'], { cwd: user, env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: 'someone/their-image' } });
+
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /HTTP 502: Bad Gateway/);
+  assert.doesNotMatch(await read(log), /pr create|tarball/);
 });

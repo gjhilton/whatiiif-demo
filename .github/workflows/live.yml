@@ -1,0 +1,48 @@
+# Checks the template on real GitHub after each change: pushes it to the demo repository named by the
+# DEMO_REPOSITORY variable, whose own Deploy workflow publishes it to GitHub Pages, then checks the live site.
+# Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
+name: Live
+
+on:
+  push:
+    branches: [main]
+    paths: ['engine/**', 'package*.json', '.github/workflows/deploy.yml', '.github/workflows/live.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live
+
+jobs:
+  demo:
+    if: vars.DEMO_REPOSITORY != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - name: Publish this commit through the demo's own Deploy workflow
+        id: demo
+        shell: bash # with pipefail, so a failure is not hidden by tee
+        run: |
+          mkdir -p ~/.ssh
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< "$DEMO_DEPLOY_KEY"
+          engine/test/live/deploy-demo.sh "$DEMO_REPOSITORY" | tee demo.log
+          echo "url=$(tail -1 demo.log)" >> "$GITHUB_OUTPUT"
+        env:
+          DEMO_REPOSITORY: ${{ vars.DEMO_REPOSITORY }}
+          DEMO_DEPLOY_KEY: ${{ secrets.DEMO_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+      - name: Check the live site
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium-headless-shell
+          node --test engine/test/e2e/check-site.js
+        env:
+          E2E_SITE_URL: ${{ steps.demo.outputs.url }}

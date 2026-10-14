@@ -15,7 +15,16 @@ if [[ "$UPSTREAM" == "${GITHUB_REPOSITORY:-}" ]]; then
 fi
 
 current=$(tr -d '[:space:]' < engine/VERSION)
-tag=$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName)
+# A template with no release yet has nothing to update to; any other failure is a real one.
+errors=$(mktemp)
+if ! tag=$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName 2> "$errors"); then
+  if grep -qx 'release not found' "$errors"; then
+    echo "$UPSTREAM has not published a release yet, so there is nothing to update to."
+    exit 0
+  fi
+  cat "$errors" >&2
+  exit 1
+fi
 latest=${tag#v}
 if [[ "$latest" == "$current" ]]; then
   echo "Already on the latest release ($current)."
