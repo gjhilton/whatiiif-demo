@@ -23,7 +23,7 @@ export function CopyField({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <span className="copy-row">
         <input readOnly value={value} onFocus={(e) => e.currentTarget.select()} />
-        <button type="button" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+        <button type="button" onClick={copy} aria-live="polite">{copied ? 'Copied' : 'Copy'}</button>
       </span>
     </label>
   );

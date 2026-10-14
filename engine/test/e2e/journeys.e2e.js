@@ -4,6 +4,7 @@
 import { suite, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, copyFile, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { missingFiles } from '../../lib/service.js';
@@ -41,14 +42,18 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
         'summary = "The fishing fleet coming in."',
         'attribution = "Example Museum"',
         'alt = "Fishing boats coming into the harbour at dusk"',
-        'rights = "https://creativecommons.org/licenses/by/4.0/"',
+        'rights = "https://creativecommons.org/licenses/by/4.0/deed.en"', // as copied from the licence's page
         '',
         '[[metadata]]',
         'label = "Date"',
         'value = "1890"',
+        '',
+        '[[metadata]]',
+        'label = "Source"',
+        'value = "https://archives.example.org/collections/harbour-views/1890/plate-17"',
       ].join('\n'),
     );
-    await writeFile(join(repo, 'content/description.md'), '## About this view\n\nTaken from the *north* pier.\n');
+    await writeFile(join(repo, 'content/description.md'), '## About this view\n\nTaken from the *north* pier, by [the lighthouse](#xywh=200,300,400,500).\n');
     await commit(repo, 'Add my photo'); // stored whole: github.com does not put uploads into Git LFS
     site = await deploy(repo, { baseUrl: 'https://gjh.github.io/harbour', repository: 'gjh/harbour' });
   });
@@ -77,7 +82,10 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.deepEqual(manifest.summary, { en: ['The fishing fleet coming in.'] });
     assert.deepEqual(manifest.requiredStatement.value, { en: ['Example Museum'] });
     assert.equal(manifest.rights, 'http://creativecommons.org/licenses/by/4.0/');
-    assert.deepEqual(manifest.metadata, [{ label: { en: ['Date'] }, value: { en: ['1890'] } }]);
+    assert.deepEqual(manifest.metadata, [
+      { label: { en: ['Date'] }, value: { en: ['1890'] } },
+      { label: { en: ['Source'] }, value: { en: ['https://archives.example.org/collections/harbour-views/1890/plate-17'] } },
+    ]);
     assert.deepEqual([manifest.items[0].width, manifest.items[0].height], [1200, 1600]);
     // Not in LFS, whatever .gitattributes says, so the LFS media host would answer 404.
     assert.equal(manifest.rendering[0].id, 'https://raw.githubusercontent.com/gjh/harbour/main/content/Harbour%20view.jpg');
@@ -87,47 +95,59 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.deepEqual(schemaProblems(await json(join(site.dist, 'iiif/manifest.json'))), []);
   });
 
-  test('the page shows the title, the description and every detail', async () => {
-    const { page, problems, close } = await open(site);
+  test('the page opens with the title, the description and every detail, without asking for them separately', async () => {
+    const { page, fetched, problems, close } = await open(site);
     await page.locator('h1').waitFor();
     assert.equal(await page.locator('h1').textContent(), 'Harbour at dusk');
     assert.equal(await page.locator('.masthead p').textContent(), 'The fishing fleet coming in.');
     assert.equal(await page.title(), 'Harbour at dusk');
-    assert.equal(await page.locator('.prose h2').textContent(), 'About this view');
+    assert.equal(await page.locator('.prose h3').textContent(), 'About this view', 'a level below the page title');
     assert.equal(await page.locator('.prose em').textContent(), 'north');
     const rows = await page.locator('.meta tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((cell) => cell.textContent)));
     assert.deepEqual(rows, [
       ['Date', '1890'],
+      ['Source', 'https://archives.example.org/collections/harbour-views/1890/plate-17'],
       ['Dimensions', '1,200 × 1,600 px'],
       ['Attribution', 'Example Museum'],
-      ['Rights', 'http://creativecommons.org/licenses/by/4.0/'],
+      ['Rights', 'CC BY 4.0'],
     ]);
+    assert.equal(await page.getByRole('link', { name: 'CC BY 4.0' }).getAttribute('href'), 'http://creativecommons.org/licenses/by/4.0/');
     assert.equal(await page.getByRole('group', { name: 'Language' }).count(), 0, 'one language, so no switch');
+    assert.equal(fetched.includes('site.json'), false, 'the page carries its details');
     assert.deepEqual(problems, []);
     await close();
   });
 
-  test('the manifest and image service addresses are shown and can be copied', async () => {
+  test('on a phone the page fits the screen, however long an address in it', async () => {
+    const { page, close } = await open(site);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('.meta').waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+    await close();
+  });
+
+  test('the links to share the view, and the manifest and image service addresses, are shown and can be copied', async () => {
     const { page, close } = await open(site);
     const fields = page.locator('.copy-field');
     await fields.first().waitFor();
     assert.deepEqual(await fields.locator('input').evaluateAll((inputs) => inputs.map((input) => input.value)), [
+      'https://gjh.github.io/harbour/?viewer=openseadragon', // the link to this view: the whole picture, so no fragment
+      '<iframe src="https://gjh.github.io/harbour/?embed&amp;viewer=openseadragon" width="800" height="1067" style="border:0;width:100%;max-width:800px;height:auto;aspect-ratio:800/1067" allowfullscreen loading="lazy" title="Harbour at dusk"></iframe>',
       'https://gjh.github.io/harbour/iiif/manifest.json',
       'https://gjh.github.io/harbour/iiif/image/info.json',
-      'https://gjh.github.io/harbour/?viewer=openseadragon', // the link to this view: the whole picture, so no fragment
-      '<iframe src="https://gjh.github.io/harbour/?embed&amp;viewer=openseadragon" width="800" height="600" style="border:0" allowfullscreen loading="lazy" title="Harbour at dusk"></iframe>',
     ]);
-    await fields.first().locator('button').click();
+    const manifest = page.locator('.copy-field', { hasText: 'Manifest URL' });
+    await manifest.locator('button').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://gjh.github.io/harbour/iiif/manifest.json');
-    assert.equal(await fields.first().locator('button').textContent(), 'Copied');
+    assert.equal(await manifest.locator('button').textContent(), 'Copied');
     await close();
   });
 
-  test('the download links lead to the full-size JPEG, which is published, and to the original on GitHub', async () => {
+  test('the downloads say how big they are, and lead to the full-size JPEG, which is published, and to the original on GitHub', async () => {
     const { page, close } = await open(site);
     const href = (name) => page.getByRole('link', { name }).getAttribute('href');
-    assert.equal(await href('Download full-size JPEG'), 'https://gjh.github.io/harbour/iiif/image/full/max/0/default.jpg');
-    assert.equal(await href('Download original file'), 'https://raw.githubusercontent.com/gjh/harbour/main/content/Harbour%20view.jpg');
+    assert.equal(await href(/^Full-size JPEG \([\d.]+ [KM]B\)$/), 'https://gjh.github.io/harbour/iiif/image/full/max/0/default.jpg');
+    assert.equal(await href(/^Original file \(JPEG, [\d.]+ [KM]B\)$/), 'https://raw.githubusercontent.com/gjh/harbour/main/content/Harbour%20view.jpg');
     assert.equal(await href('View manifest'), 'https://gjh.github.io/harbour/iiif/manifest.json');
     assert.equal(await exists(join(site.dist, 'iiif/image/full/max/0/default.jpg')), true);
     await close();
@@ -174,10 +194,19 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     await close();
 
     // A blog on another site, carrying the snippet; the site itself is answered from the build.
-    const blog = await open(site, '', { elsewhere: `<!doctype html><h1>My post</h1>${snippet}` });
+    const blog = await open(site, '', { elsewhere: `<!doctype html><h1>My post</h1>${snippet}<p style="height:2000px">More of the post.</p>` });
     const frame = blog.page.frameLocator('iframe');
     await frame.locator('.openseadragon-container').first().waitFor();
     await until(() => blog.fetched.some((path) => path.startsWith('iiif/image/')), 'the picture to load in the frame');
+    const iframe = await blog.page.locator('iframe').boundingBox();
+    assert.deepEqual([iframe.width, Math.round(iframe.height)], [800, 1067], 'the shape of the picture');
+
+    // Someone reading the post scrolls past the picture: it zooms only if they hold Ctrl (or Cmd) as they scroll.
+    await blog.page.mouse.move(iframe.x + 400, 400);
+    await blog.page.mouse.wheel(0, 300);
+    await until(() => blog.page.evaluate(() => scrollY > 0), 'the post to scroll');
+    assert.ok(await frame.locator('.openseadragon-cooperative-overlay').textContent(), 'a hint says how to zoom');
+
     assert.equal(await frame.locator('.masthead').count(), 0, 'no header');
     assert.equal(await frame.locator('.details').count(), 0, 'no details');
     assert.deepEqual(await frame.locator('.credit span').allTextContents(), ['Harbour at dusk', 'Example Museum']);
@@ -186,8 +215,78 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.equal(await back.getAttribute('target'), '_blank');
     const pane = await frame.locator('.viewer').boundingBox();
     assert.ok(pane.width > 790 && pane.height > 520, `the viewer fills the frame (${pane.width}x${pane.height})`);
+
+    // Holding Ctrl, they zoom in; the link back then opens the full page on what they zoomed into.
+    await blog.page.evaluate(() => scrollTo(0, 0));
+    await zoomToFullResolution(blog, { holding: 'Control', within: frame });
+    await until(async () => /#xywh=\d+,\d+,\d+,\d+$/.test(await back.getAttribute('href')), 'the link back to follow the view');
     assert.deepEqual(blog.problems, []);
     await blog.close();
+  });
+
+  test('a link in the description to a detail of the picture shows that detail, in either viewer', async () => {
+    for (const viewer of ['openseadragon', 'mirador']) {
+      const { page, problems, close } = await open(site, `?viewer=${viewer}`);
+      await page.locator(viewer === 'mirador' ? '.mirador-window .openseadragon-container' : '.openseadragon-container').first().waitFor();
+      await page.waitForLoadState('networkidle');
+      await page.getByRole('link', { name: 'the lighthouse' }).click();
+      const shown = () => (new URL(page.url()).hash.match(/^#xywh=(\d+),(\d+),(\d+),(\d+)$/) ?? []).slice(1).map(Number);
+      await until(() => {
+        const [x, y, w, h] = shown();
+        return x <= 202 && y <= 302 && x + w >= 598 && y + h >= 798 && h < 1000;
+      }, `${viewer} to show the lighthouse`);
+      assert.equal(new URL(page.url()).searchParams.get('viewer'), viewer, 'the viewer stays as it was');
+      assert.deepEqual(problems, []);
+      await close();
+    }
+  });
+
+  test('editing the part of the picture in the address moves the viewer there', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon');
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => {
+      location.hash = '#xywh=600,800,300,300';
+    });
+    await until(() => {
+      const [x, y, w, h] = (new URL(page.url()).hash.match(/^#xywh=(\d+),(\d+),(\d+),(\d+)$/) ?? []).slice(1).map(Number);
+      return x <= 602 && y <= 802 && x + w >= 898 && y + h >= 1098 && h < 1000;
+    }, 'the viewer to settle on the part asked for');
+    await close();
+  });
+
+  test('a visitor whose computer is set to dark mode sees the page in white on black, in either viewer', async () => {
+    for (const viewer of ['openseadragon', 'mirador']) {
+      const { page, problems, close } = await open(site, `?viewer=${viewer}`, { colorScheme: 'dark' });
+      await page.locator(viewer === 'mirador' ? '.mirador-window .openseadragon-container' : '.openseadragon-container').first().waitFor();
+      const colours = await page.evaluate(() => [getComputedStyle(document.body).backgroundColor, getComputedStyle(document.body).color]);
+      assert.deepEqual(colours, ['rgb(0, 0, 0)', 'rgb(255, 255, 255)']);
+      if (viewer === 'mirador') {
+        const window = await page.locator('.mirador-window-top-bar').evaluate((bar) => getComputedStyle(bar).color);
+        assert.equal(window, 'rgb(255, 255, 255)', "Mirador's own words are white too");
+      }
+      assert.deepEqual(problems, []);
+      await close();
+    }
+  });
+
+  test('OpenSeadragon has buttons in the page\'s own style, which zoom in and back out to the whole picture', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon');
+    const controls = page.getByRole('group', { name: 'Picture' });
+    await controls.waitFor();
+    assert.deepEqual(await controls.getByRole('button').evaluateAll((buttons) => buttons.map((b) => b.getAttribute('aria-label'))), [
+      'Zoom in',
+      'Zoom out',
+      'Show the whole picture',
+      'Full screen',
+    ]);
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    await controls.getByRole('button', { name: 'Zoom in' }).click();
+    await until(() => new URL(page.url()).hash.startsWith('#xywh='), 'the closer view to reach the address');
+    await controls.getByRole('button', { name: 'Show the whole picture' }).click();
+    await until(() => new URL(page.url()).hash === '', 'the whole picture, which needs no fragment');
+    await close();
   });
 
   test('OpenSeadragon opens first and zooms to full resolution', async () => {
@@ -232,6 +331,9 @@ suite('a Welsh archive publishes its image in Welsh and English', () => {
         '[[metadata]]',
         'label = { cy = "Dyddiad", en = "Date" }',
         'value = "1890"',
+        '',
+        '[colours]',
+        'paper = "#fdf6e3"',
       ].join('\n'),
     );
     await writeFile(join(repo, 'content/description.md'), 'Golygfa o\'r *pier*.\n');
@@ -303,6 +405,15 @@ suite('a Welsh archive publishes its image in Welsh and English', () => {
     await close();
 
     assert.deepEqual((await shown({ locale: 'en-GB', query: '?lang=cy' })).title, ['Harbwr', 'cy']);
+  });
+
+  test('the colours chosen in whatiiif.toml are the page\'s, in dark mode too', async () => {
+    for (const colorScheme of ['light', 'dark']) {
+      const { page, close } = await open(site, '', { colorScheme });
+      await page.locator('h1').waitFor();
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(253, 246, 227)', colorScheme);
+      await close();
+    }
   });
 
   test('switching language leaves OpenSeadragon, which shows no words of its own, as it was', async () => {
@@ -442,6 +553,48 @@ suite('an archive commits a 16-bit scan through Git LFS and changes no settings'
   });
 });
 
+suite('a library publishes a scan too big to upload by linking to it in a GitHub release', () => {
+  let server;
+  let link;
+  let site;
+  const requested = [];
+
+  before(async () => {
+    // Stands in for github.com serving a release's file: it answers the build, never the visitor's browser.
+    const picture = await readFile(await makeImage(2600, 1800));
+    server = createServer((request, response) => {
+      requested.push(request.url);
+      if (request.url !== '/gjh/harbour/releases/download/picture/Harbour%20scan.tif') return response.writeHead(404).end();
+      response.writeHead(200, { 'content-type': 'application/octet-stream' }).end(picture);
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    link = `http://127.0.0.1:${server.address().port}/gjh/harbour/releases/download/picture/Harbour%20scan.tif`;
+
+    const repo = await templateCopy();
+    await writeFile(join(repo, 'content/whatiiif.toml'), `picture = "${link}"\n`);
+    await commit(repo, 'Link to the scan');
+    site = await deploy(repo);
+  });
+  after(() => server?.close());
+
+  test('the site is built from the picture at the link, named after its file, and the link is where to download it', async () => {
+    assert.equal(site.built, true, site.log);
+    assert.deepEqual(requested, ['/gjh/harbour/releases/download/picture/Harbour%20scan.tif']);
+    const manifest = await json(join(site.dist, 'iiif/manifest.json'));
+    assert.deepEqual(manifest.label, { en: ['Harbour scan'] });
+    assert.deepEqual([manifest.rendering[0].id, manifest.rendering[0].format], [link, 'image/tiff']);
+    assert.deepEqual(await missingFiles(join(site.dist, 'iiif/image')), []);
+  });
+
+  test('visitors zoom into it as into any other', async () => {
+    const opened = await open(site);
+    assert.equal(await opened.page.locator('h1').textContent(), 'Harbour scan');
+    await zoomToFullResolution(opened);
+    assert.deepEqual(opened.problems, []);
+    await opened.close();
+  });
+});
+
 // What someone gets wrong, and the sentence that must tell them so. The build fails, so the workflow stops before
 // deploying, and nothing about the image is made.
 const mistakes = [
@@ -458,7 +611,7 @@ const mistakes = [
   {
     name: 'misspells a setting',
     files: { 'a.png': 'x', 'whatiiif.toml': 'titel = "Harbour"' },
-    says: /Build failed: content\/whatiiif\.toml: unknown setting "titel"\. Valid settings here: language, title, summary/,
+    says: /Build failed: content\/whatiiif\.toml: unknown setting "titel"; did you mean "title"\? Valid settings here: language, title, summary/,
   },
   {
     name: 'leaves the settings file half-written',

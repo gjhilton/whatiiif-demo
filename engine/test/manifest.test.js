@@ -34,6 +34,10 @@ test('is a Presentation 3.0 manifest with one canvas sized like the image', () =
   assert.equal(m.items[0].height, 3001);
 });
 
+test('the canvas is labelled with the title, which viewers show beside it', () => {
+  assert.deepEqual(buildManifest(base).items[0].label, { en: ['Harbour'] });
+});
+
 test('paints the full-size image and points at the image service', () => {
   const painted = painting(buildManifest(base));
   assert.equal(painted.motivation, 'painting');
@@ -132,7 +136,8 @@ const cases = {
 
 for (const [name, { toml = '', ...overrides }] of Object.entries(cases)) {
   test(`the manifest for ${name} passes the IIIF Presentation 3.0 schema`, { skip: schemaUnavailable }, () => {
-    const config = parseConfig(toml, { imageName: 'harbour.tif' });
+    const parsed = parseConfig(toml);
+    const config = { ...parsed, title: parsed.title ?? { en: 'harbour' } };
     assert.deepEqual(schemaProblems(buildManifest({ ...base, config, ...overrides })), []);
   });
 }

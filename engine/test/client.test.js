@@ -2,7 +2,8 @@
 // which language it speaks. Node runs these TypeScript files as they are, its types stripped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { embedCode, linkTo, readAddress, withChoice, withRegion } from '../client/src/address.ts';
+import { embedCode, linkTo, readAddress, regionLinked, withChoice, withRegion } from '../client/src/address.ts';
+import { fileSize, formatName, rightsName } from '../client/src/describe.ts';
 import { chooseLanguage, inLanguage } from '../client/src/language.ts';
 
 const site = { width: 4000, height: 3000, pageUrl: 'https://gjh.github.io/harbour/', language: 'en', languages: ['en'] };
@@ -59,11 +60,56 @@ test('a link to the view names the viewer, the language only where there is a ch
   assert.equal(linkTo(site, { viewer: 'mirador', language: 'en', embed: true }), 'https://gjh.github.io/harbour/?embed&viewer=mirador');
 });
 
+// A detail link: someone zooms in, copies the link to that view, and links words in description.md to it.
+const details = [
+  ['#xywh=10,20,30,40', { x: 10, y: 20, w: 30, h: 40 }, 'a fragment on its own'],
+  ['https://gjh.github.io/harbour/?viewer=mirador#xywh=10,20,30,40', { x: 10, y: 20, w: 30, h: 40 }, 'the published page, viewer and all'],
+  ['./?lang=cy#xywh=10,20,30,40', { x: 10, y: 20, w: 30, h: 40 }, 'this page by a relative link'],
+  ['https://gjh.github.io/harbour/', undefined, 'the page without a fragment'],
+  ['https://elsewhere.example/#xywh=1,2,3,4', undefined, 'another site'],
+  ['https://gjh.github.io/harbour/about.html#xywh=1,2,3,4', undefined, 'another page on the same site'],
+];
+
+for (const [href, region, what] of details) {
+  test(`a link in the description to ${what} ${region ? 'shows a detail' : 'is an ordinary link'}`, () => {
+    assert.deepEqual(regionLinked(href, site, 'http://localhost:4173/?viewer=openseadragon'), region);
+  });
+}
+
 test('the embed code is an iframe whose address and title cannot break out of their attributes', () => {
   assert.equal(
-    embedCode('https://gjh.github.io/harbour/?embed&viewer=mirador', 'Boats "at" <dusk>'),
-    '<iframe src="https://gjh.github.io/harbour/?embed&amp;viewer=mirador" width="800" height="600" style="border:0" allowfullscreen loading="lazy" title="Boats &quot;at&quot; &lt;dusk>"></iframe>',
+    embedCode('https://gjh.github.io/harbour/?embed&viewer=mirador', 'Boats "at" <dusk>', site),
+    '<iframe src="https://gjh.github.io/harbour/?embed&amp;viewer=mirador" width="800" height="600" style="border:0;width:100%;max-width:800px;height:auto;aspect-ratio:800/600" allowfullscreen loading="lazy" title="Boats &quot;at&quot; &lt;dusk>"></iframe>',
   );
+});
+
+test('the embedded picture takes the shape of the picture, within reason, and narrows to fit a phone', () => {
+  const shape = (width, height) => embedCode('x', 't', { ...site, width, height }).match(/width="(\d+)" height="(\d+)"/).slice(1).map(Number);
+  assert.deepEqual(shape(1200, 1600), [800, 1067]);
+  assert.deepEqual(shape(3000, 1000), [800, 400], 'no wider than two to one');
+  assert.deepEqual(shape(1000, 40000), [800, 1067], 'no taller than three to four');
+});
+
+const licences = [
+  ['http://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0'],
+  ['http://creativecommons.org/licenses/by-nc-sa/4.0/', 'CC BY-NC-SA 4.0'],
+  ['http://creativecommons.org/licenses/by/3.0/de/', 'CC BY 3.0 DE'],
+  ['http://creativecommons.org/publicdomain/zero/1.0/', 'CC0 1.0'],
+  ['http://creativecommons.org/publicdomain/mark/1.0/', 'Public Domain Mark 1.0'],
+  ['http://rightsstatements.org/vocab/InC/1.0/', 'In Copyright'],
+  ['http://rightsstatements.org/vocab/NoC-US/1.0/', 'No Copyright – United States'],
+  ['http://rightsstatements.org/vocab/XYZ/1.0/', 'http://rightsstatements.org/vocab/XYZ/1.0/'],
+];
+
+for (const [url, name] of licences) {
+  test(`the rights ${url} are shown as ${name}`, () => {
+    assert.equal(rightsName(url), name);
+  });
+}
+
+test('downloads are described the way a computer shows files', () => {
+  assert.deepEqual([fileSize(900), fileSize(48_000), fileSize(4_120_000), fileSize(123_400_000), fileSize(2_345_000_000)], ['1 KB', '48 KB', '4.1 MB', '123 MB', '2.3 GB']);
+  assert.deepEqual([formatName('image/tiff'), formatName('image/png'), formatName('image/jpeg')], ['TIFF', 'PNG', 'JPEG']);
 });
 
 const choices = [

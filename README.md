@@ -9,6 +9,34 @@ that museum and library viewers such as Mirador and Universal Viewer read.
 
 You need a free GitHub account. Everything below happens in your web browser.
 
+## What you get
+
+For people looking at your picture:
+
+- Zoom from the whole picture down to every pixel, in [OpenSeadragon](https://openseadragon.github.io) or
+  [Mirador](https://projectmirador.org); they can switch between the two.
+- A link to exactly the part they have zoomed into, to share.
+- Code to put the zoomable picture into a blog post or another website. It fits narrow screens and, in
+  OpenSeadragon, lets readers scroll on past it.
+- Downloads of the full-size JPEG and of your original file, each with its size (you can switch either off).
+- Your texts in every language you write them in. Visitors see their own and can switch.
+- A light page, or a dark one if their computer is set to dark mode. It works on phones, and shows the picture
+  without JavaScript.
+- Alternative text for people who cannot see the picture.
+- Links shared on social media and in chat apps show the picture, its title and summary.
+
+For you:
+
+- No server and no cost: GitHub builds the site and hosts it.
+- Upload a TIFF, PNG or JPEG of up to 2 GB in the browser ([Large pictures](#large-pictures) shows how). If the
+  site would be too big for GitHub Pages, the full-size JPEG is left out to make room.
+- Photos are turned the right way up and their colours kept true. The camera and location details are left out.
+- A title, summary, credit, licence and any other details you like, and a description that can link to parts of the
+  picture.
+- Your own colours, if you want them.
+- A mistake is explained in a sentence at the top of the page of the build that found it.
+- Improvements to whatiiif arrive as a pull request for you to merge. Your picture and settings are never touched.
+
 ## Make your site
 
 1. **Copy this template.** At the top of this page click **Use this template → Create a new repository**.
@@ -39,28 +67,43 @@ rights = "https://creativecommons.org/licenses/by/4.0/"
 Click **Commit changes** and the site rebuilds itself. For a longer description, add a file called
 `content/description.md` (written in [Markdown](https://commonmark.org/help/)).
 
+- **Point at details:** zoom in on something on your site, copy **Link to this view**, and use it as a link in
+  `description.md`: `[the lighthouse](https://…#xywh=1200,300,400,400)`. Clicking it takes the viewer there.
 - **Other languages:** write any text like `title = { en = "Harbour", cy = "Harbwr" }`, and add
   `description.cy.md` next to `description.md`. Visitors see their own language and can switch.
-- **rights** must be a Creative Commons or RightsStatements.org address. Put any other terms in `attribution`.
-- Every setting is explained in the file itself.
+- **rights** must be a Creative Commons or RightsStatements.org address; the address of the licence's own page,
+  copied from your browser, is fine. Put any other terms in `attribution`.
+- **Colours:** the page is black on white, or white on black for visitors whose computer is set to dark mode. To
+  use your own colours in both, add a section like this (any CSS colour works):
+
+  ```toml
+  [colours]
+  paper = "#fdf6e3" # the background
+  ink = "#222222"   # text, lines, and the button that is selected
+  ```
+
+- Every setting is explained in [the template's own copy of the file](https://github.com/gjhilton/whatiiif/blob/main/content/whatiiif.toml),
+  which may list settings that are newer than your copy.
 
 ## Share it
 
 Under the picture on your site you will find, ready to copy:
 
-- **Manifest URL**: paste it into any IIIF viewer.
 - **Link to this view**: zoom into a detail first, and the link opens on exactly that.
 - **Embed on a web page**: code that puts the zoomable picture into a blog post or another website.
-
-Links to your site show the picture, title and summary when shared on social media or in chat apps.
+- **Manifest URL**: paste it into any IIIF viewer, or use the links to open the picture in Mirador or Universal
+  Viewer.
 
 ## Change the picture
 
-Delete the old file from the `content` folder and upload the new one. The site holds one picture at a time.
+Delete the old file from the `content` folder, then upload the new one. The site holds one picture at a time, so
+uploading the new one first stops the build until the old one is gone. For a picture given by its link, see
+[Large pictures](#large-pictures).
 
 ## If something goes wrong
 
-Open the **Actions** tab and click the run with a red cross. The error explains what to fix:
+Open the **Actions** tab and click the run with a red cross. What went wrong is shown at the top of the run's page.
+Most messages say what to fix; for some, this table says more:
 
 | The error says | What to do |
 |---|---|
@@ -68,26 +111,50 @@ Open the **Actions** tab and click the run with a red cross. The error explains 
 | content/ must contain exactly one image | Delete the extra pictures from `content`. |
 | … is not supported yet | Save the picture as TIFF, PNG or JPEG and upload that instead. |
 | content/whatiiif.toml: … | Fix the setting it names; the message says how. |
+| Could not download the picture at … | Check the `picture` link: paste it into a private browser window, and it should download the picture. |
 | Timeout reached, or Deployment cancelled | GitHub Pages was slow. Re-running may not help: make any small change, such as a line in `content/whatiiif.toml`, and commit it to start afresh. |
 
-If nothing runs at all after you upload, check that the picture went into the **content** folder.
+If nothing runs at all after you upload, check that the picture went into the **content** folder. A run that worked
+may still list things **worth a look**, such as a file in `content` with a misspelt name, which the site does not use.
+If you are stuck, [open an issue](https://github.com/gjhilton/whatiiif/issues).
 
 ## Large pictures
 
-Pictures over 25 MB cannot be uploaded in the browser, so use Git on your computer instead. This template already
-sends pictures through [Git LFS](https://git-lfs.com), which handles files over GitHub's 100 MB limit:
+The browser cannot upload a picture of more than 25 MB into `content`, but it can upload one of up to 2 GB into a
+release:
 
-1. Install [Git LFS](https://git-lfs.com) and run `git lfs install` once.
-2. Clone your repository, copy the picture into `content/`, then commit and push.
+1. On your repository's **Code** tab, click **Releases** (on the right), then **Create a new release**.
+2. In the tag box, type `picture` and choose to create it as a new tag. Give the release any title.
+3. Drop the picture into the box at the bottom, wait for it to upload, and click **Publish release**.
+4. On the release's page, right-click the picture's name under **Assets** and copy the link.
+5. Open `content/whatiiif.toml`, add a line `picture = "…"` with that link between the quotes, and commit it.
 
-Free GitHub accounts include 10 GiB of LFS storage and 10 GiB of downloads a month; each rebuild downloads the
-picture once.
+The site is built from the picture at the link, which is also where visitors download the original. To change the
+picture, add the new one to the release under a different file name, and change the link to it: committing the new
+link rebuilds the site.
+
+If you use Git on your computer, you can instead commit the picture into `content/` as usual: your repository stores
+pictures with [Git LFS](https://git-lfs.com), which handles files over GitHub's 100 MB limit. Free GitHub accounts
+include 10 GiB of LFS storage and 10 GiB of downloads a month. Each rebuild downloads the picture once, and so does
+each visitor who downloads the original; `[publish] original = false` in `content/whatiiif.toml` stops offering it.
 
 ## Keeping up to date
 
-When this template improves, an **Update** workflow opens a pull request in your repository: merge it to update.
-To let it do that, turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull
-requests**. It never touches your `content` folder.
+Once a week an **Update** workflow checks for a new release of whatiiif and, if there is one, opens a pull request
+in your repository: merge it to update. To let it do that, turn on **Settings → Actions → General → Workflow
+permissions → Allow GitHub Actions to create and approve pull requests**. It never touches your `content` folder.
+GitHub does not let it change the files in `.github/workflows`, so when one of those changes, the pull request links
+to the new version and to yours, for you to copy it over by hand.
+
+## No warranty
+
+whatiiif is free software, provided "as is", without warranty of any kind, express or implied. Its authors are not
+liable for any claim, damages or other liability arising from its use. The [MIT licence](LICENSE) gives these terms
+in full. In particular:
+
+- Keep your own copy of every picture you publish: nothing here backs anything up.
+- You are responsible for having the right to publish what you upload, and for what your site says.
+- A site depends on GitHub, whose services, limits and terms can change at any time.
 
 ---
 

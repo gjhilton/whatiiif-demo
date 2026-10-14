@@ -82,7 +82,7 @@ test('the embedded view shows the picture and its credit, and nothing else', asy
   const { page, fetched, problems, close } = await browse(browser, { siteUrl, fileFor, query: '?embed' });
   await page.locator('.credit').waitFor();
   assert.equal(await page.locator('.masthead').count(), 0);
-  await zoomToFullResolution({ page, fetched });
+  await zoomToFullResolution({ page, fetched }, { holding: 'Control' });
   assert.deepEqual(problems, []);
   await close();
 });

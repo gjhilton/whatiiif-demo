@@ -61,7 +61,7 @@ test('a picture too big for the browser goes through Git LFS, and a site near th
     const { code, stdout } = await run('gh', ['run', 'view', String(id), '-R', repository, '--log']);
     return code === 0 && stdout.includes('Done:') && stdout;
   }, `the log of run ${id}`, 5 * MINUTE);
-  assert.match(log, /Site was over the Pages size budget, so the full-size download \(full\/max\) was left out\./);
+  assert.match(log, /::warning title=Worth a look::The site would have been too big for GitHub Pages, so the full-size JPEG was left out\./);
   const megabytes = Number(log.match(/Done: (\d+) MB of IIIF files/)?.[1]);
   assert.ok(megabytes > 700 && megabytes < 900, `the site holds ${megabytes} MB of IIIF files`);
 

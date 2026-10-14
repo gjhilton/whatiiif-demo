@@ -34,6 +34,7 @@ jobs:
     needs: content
     if: needs.content.outputs.image == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60 # a stuck run stops here, not after GitHub's six hours
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -68,4 +69,5 @@ jobs:
         uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-${{ github.run_attempt }}
-          timeout: 1200000 # 20 minutes; GitHub Pages sometimes takes more than the default 10
+          # No `timeout`: its default, 10 minutes, is also the most deploy-pages allows, and asking for more only puts
+          # a warning on every run.

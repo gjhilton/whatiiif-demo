@@ -20,6 +20,7 @@ export function App({ site }: { site: Site }) {
   const [viewer, setViewer] = useState(asked.viewer ?? site.viewer);
   const [language, setLanguage] = useState(() => chooseLanguage(site, [asked.language, ...navigator.languages]));
   const [region, setRegion] = useState(asked.region);
+  const [goTo, setGoTo] = useState<{ region: Region }>();
   // Where a newly mounted viewer opens: the region in the link, then wherever the visitor has got to.
   const current = useRef(region);
 
@@ -32,6 +33,22 @@ export function App({ site }: { site: Site }) {
     },
     [site],
   );
+  /** Moves the viewer to `part` of the picture, as a detail link or an edited address asks. */
+  const show = useCallback((part: Region) => {
+    current.current = part;
+    setRegion(part);
+    setGoTo({ region: part });
+    showInAddress(withRegion(location.href, part));
+  }, []);
+  useEffect(() => {
+    const followAddress = () => {
+      const { region: part } = readAddress(location.href, site, VIEWER_IDS);
+      if (part) show(part);
+    };
+    addEventListener('hashchange', followAddress);
+    return () => removeEventListener('hashchange', followAddress);
+  }, [site, show]);
+
   const switchViewer = (id: ViewerId) => {
     setViewer(id);
     showInAddress(withChoice(location.href, 'viewer', id));
@@ -47,7 +64,9 @@ export function App({ site }: { site: Site }) {
     document.title = title.text;
   }, [title.text]);
 
-  const viewerPane = <ViewerPane site={site} viewer={viewer} language={language} startAt={current} onRegionChange={onRegionChange} />;
+  const viewerPane = (
+    <ViewerPane site={site} viewer={viewer} language={language} startAt={current} goTo={goTo} onRegionChange={onRegionChange} embedded={asked.embed} />
+  );
   const link = linkTo(site, { viewer, language, region });
   if (asked.embed) {
     return (
@@ -73,7 +92,13 @@ export function App({ site }: { site: Site }) {
       </header>
       {viewerPane}
       <main className="content">
-        <Details site={site} language={language} link={link} embed={embedCode(linkTo(site, { viewer, language, region, embed: true }), title.text)} />
+        <Details
+          site={site}
+          language={language}
+          link={link}
+          embed={embedCode(linkTo(site, { viewer, language, region, embed: true }), title.text, site)}
+          show={show}
+        />
       </main>
     </>
   );

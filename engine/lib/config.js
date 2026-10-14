@@ -1,24 +1,41 @@
 // content/whatiiif.toml: what the site's owner wrote, checked and turned into settings with every default applied.
 // Its readers are not programmers, so every mistake is explained in a sentence that says what to write instead.
 import { parse } from 'smol-toml';
-import { basename, extname } from 'node:path';
+import { closest } from './spelling.js';
 
 export const VIEWERS = ['openseadragon', 'mirador'];
 // A BCP 47 language tag (en, cy, de-CH, zh-Hant), or IIIF's "none" for text in no particular language.
-export const LANGUAGE = /^(none|[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*)$/;
-const LANGUAGE_EXAMPLE = 'a language code such as en, cy or de-CH';
+const LANGUAGE = /^(none|[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*)$/;
+export const LANGUAGE_EXAMPLE = 'a language code such as en, cy or de-CH';
 const TILE_SIZES = [64, 4096];
 
 // The settings each part of the file may hold.
 const SETTINGS = {
-  '': ['language', 'title', 'summary', 'attribution', 'alt', 'rights', 'viewer', 'base_url', 'metadata', 'tiles', 'publish'],
+  '': ['language', 'title', 'summary', 'attribution', 'alt', 'rights', 'picture', 'viewer', 'base_url', 'metadata', 'tiles', 'publish', 'colours'],
   tiles: ['size', 'quality'],
-  publish: ['full'],
+  publish: ['full', 'original'],
   metadata: ['label', 'value'],
+  // The page's colours, named as in engine/client/src/colours.css.
+  colours: ['paper', 'ink', 'error', 'viewer'],
 };
 
-// IIIF only accepts Creative Commons and RightsStatements.org URIs as `rights`, in the http:// form they are defined with.
-const RIGHTS = /^https?:\/\/(?:www\.)?((?:creativecommons\.org\/(?:licenses|publicdomain)|rightsstatements\.org\/vocab)\/.+)$/;
+// CSS colour names; a colour's value is written into the page, so nothing but a colour may get through.
+const NAMED_COLOURS = new Set(
+  `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue
+  chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey
+  darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray
+  darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen
+  fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki
+  lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen
+  lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime
+  limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue
+  mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive
+  olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum
+  powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver
+  skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white
+  whitesmoke yellow yellowgreen`.split(/\s+/),
+);
+const COLOUR = /^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([\w\s.,%/+-]*\))$/i;
 
 const fail = (message) => {
   throw new Error(`content/whatiiif.toml: ${message}`);
@@ -31,9 +48,9 @@ const isTable = (value) => typeof value === 'object' && value !== null && !Array
 
 function checkKeys(table, part) {
   for (const key of Object.keys(table)) {
-    if (!SETTINGS[part].includes(key)) {
-      fail(`unknown setting "${part ? `${part}.` : ''}${key}". Valid settings here: ${SETTINGS[part].join(', ')}`);
-    }
+    if (SETTINGS[part].includes(key)) continue;
+    const meant = closest(key, SETTINGS[part]);
+    fail(`unknown setting "${part ? `${part}.` : ''}${key}"${meant ? `; did you mean "${meant}"?` : '.'} Valid settings here: ${SETTINGS[part].join(', ')}`);
   }
 }
 
@@ -44,6 +61,19 @@ function section(raw, name) {
   checkKeys(table, name);
   return table;
 }
+
+/** `tag` as BCP 47 writes it (cy-GB, zh-Hant), so that EN and en are the same; undefined if it is not a language code. */
+export function languageCode(tag) {
+  if (typeof tag !== 'string' || !LANGUAGE.test(tag)) return undefined;
+  if (tag.toLowerCase() === 'none') return 'none';
+  try {
+    return Intl.getCanonicalLocales(tag)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+const languageTag = (tag, problem) => languageCode(tag) ?? fail(problem);
 
 /**
  * A text setting as a language map, `{ en: "Harbour", cy: "Harbwr" }`: plain text is in the site's `language`, a
@@ -62,9 +92,12 @@ function text(value, setting, language) {
   const entries = Object.entries(value);
   if (entries.length === 0) fail(`"${setting}" is an empty table; give the text, or one entry per language`);
   const map = {};
-  for (const [tag, given] of entries) {
-    if (!LANGUAGE.test(tag)) fail(`"${setting}" has "${tag}", which is not ${LANGUAGE_EXAMPLE}`);
-    const trimmed = words(given, `${setting}.${tag}`);
+  const seen = new Set();
+  for (const [typed, given] of entries) {
+    const tag = languageTag(typed, `"${setting}" has "${typed}", which is not ${LANGUAGE_EXAMPLE}`);
+    if (seen.has(tag)) fail(`"${setting}" gives "${tag}" twice; keep one`);
+    seen.add(tag);
+    const trimmed = words(given, `${setting}.${typed}`);
     if (trimmed) map[tag] = trimmed;
   }
   return Object.keys(map).length ? map : undefined;
@@ -84,26 +117,33 @@ function metadata(raw, language) {
   });
 }
 
+/**
+ * IIIF only accepts Creative Commons and RightsStatements.org URIs as `rights`, in the http:// form they are
+ * defined with. People copy the address of the page they read, so a licence's deed or legal code, a
+ * statement's page, and any query are taken back to the URI they describe.
+ */
 function rights(value) {
   if (value === undefined) return undefined;
-  const known = typeof value === 'string' && RIGHTS.exec(value);
-  if (!known) {
-    fail(
-      `"rights" must be a Creative Commons or RightsStatements.org URL, for example https://creativecommons.org/licenses/by/4.0/ (got ${written(value)}). Describe any other terms in "attribution" instead.`,
-    );
+  const url = typeof value === 'string' ? URL.parse(value) : null;
+  const host = url && ['http:', 'https:'].includes(url.protocol) && url.hostname.replace(/^www\./, '');
+  const path = url?.pathname.split('/').filter(Boolean) ?? [];
+  if (host === 'creativecommons.org' && ['licenses', 'publicdomain'].includes(path[0]) && path.length >= 3) {
+    while (/^(deed|legalcode)/.test(path.at(-1))) path.pop();
+    if (path.length >= 3) return `http://creativecommons.org/${path.join('/')}/`;
   }
-  return `http://${known[1]}`;
+  if (host === 'rightsstatements.org' && ['vocab', 'page'].includes(path[0]) && path.length === 3) {
+    return `http://rightsstatements.org/vocab/${path[1]}/${path[2]}/`;
+  }
+  return fail(
+    `"rights" must be a Creative Commons or RightsStatements.org URL, for example https://creativecommons.org/licenses/by/4.0/ (got ${written(value)}). Describe any other terms in "attribution" instead.`,
+  );
 }
 
-function baseUrl(value) {
+/** An address on the web, without the slashes it may end in; `example` and `otherwise` explain a wrong one. */
+function webAddress(value, setting, example, otherwise = '') {
   if (value === undefined) return undefined;
-  let url;
-  try {
-    url = typeof value === 'string' && new URL(value);
-  } catch {}
-  if (!url || !['http:', 'https:'].includes(url.protocol)) {
-    fail(`"base_url" must be a URL such as https://example.org/my-image (got ${written(value)})`);
-  }
+  const url = typeof value === 'string' ? URL.parse(value) : null;
+  if (!url || !['http:', 'https:'].includes(url.protocol)) fail(`"${setting}" must be ${example} (got ${written(value)})${otherwise}`);
   return value.replace(/\/+$/, '');
 }
 
@@ -114,8 +154,28 @@ function wholeNumber(value, setting, [min, max]) {
   return value;
 }
 
-/** Parses whatiiif.toml text into settings with defaults applied. Throws readable errors. */
-export function parseConfig(toml, { imageName }) {
+function yesOrNo(value, setting) {
+  if (typeof value !== 'boolean') fail(`"${setting}" must be true or false, without quotes (got ${written(value)})`);
+  return value;
+}
+
+function colours(table) {
+  const chosen = {};
+  for (const [name, value] of Object.entries(table)) {
+    const colour = typeof value === 'string' && value.trim();
+    if (!colour || !(COLOUR.test(colour) || NAMED_COLOURS.has(colour.toLowerCase()))) {
+      fail(`"colours.${name}" must be a CSS colour, such as "#1a1a1a", "black" or "rgb(26 26 26)" (got ${written(value)})`);
+    }
+    chosen[name] = colour;
+  }
+  return chosen;
+}
+
+/**
+ * Parses whatiiif.toml text into settings with defaults applied. Throws readable errors. The title and alt text
+ * are left out when not given: their default comes from the picture's name, which is not known here.
+ */
+export function parseConfig(toml) {
   let raw;
   try {
     raw = parse(toml);
@@ -126,29 +186,26 @@ export function parseConfig(toml, { imageName }) {
   const tiles = section(raw, 'tiles');
   const publish = section(raw, 'publish');
 
-  const language = raw.language ?? 'en';
-  if (typeof language !== 'string' || !LANGUAGE.test(language)) fail(`"language" must be ${LANGUAGE_EXAMPLE} (got ${written(language)})`);
-  const title = text(raw.title, 'title', language) ?? { [language]: basename(imageName, extname(imageName)) };
-
+  const language = languageTag(raw.language ?? 'en', `"language" must be ${LANGUAGE_EXAMPLE} (got ${written(raw.language)})`);
   const viewer = raw.viewer ?? VIEWERS[0];
   if (!VIEWERS.includes(viewer)) fail(`"viewer" must be one of: ${VIEWERS.join(', ')} (got ${written(viewer)})`);
-  const full = publish.full ?? true;
-  if (typeof full !== 'boolean') fail(`"publish.full" must be true or false, without quotes (got ${written(full)})`);
 
   return {
     language,
-    title,
+    title: text(raw.title, 'title', language),
     summary: text(raw.summary, 'summary', language),
     attribution: text(raw.attribution, 'attribution', language),
-    alt: text(raw.alt, 'alt', language) ?? title,
+    alt: text(raw.alt, 'alt', language),
     rights: rights(raw.rights),
+    picture: webAddress(raw.picture, 'picture', 'the web address of a picture, starting https://', '. A picture in content/ needs no setting.'),
     viewer,
-    base_url: baseUrl(raw.base_url),
+    base_url: webAddress(raw.base_url, 'base_url', 'a URL such as https://example.org/my-image'),
     metadata: metadata(raw.metadata, language),
     tiles: {
       size: wholeNumber(tiles.size ?? 512, 'tiles.size', TILE_SIZES),
       quality: wholeNumber(tiles.quality ?? 85, 'tiles.quality', [1, 100]),
     },
-    publish: { full },
+    publish: { full: yesOrNo(publish.full ?? true, 'publish.full'), original: yesOrNo(publish.original ?? true, 'publish.original') },
+    colours: colours(section(raw, 'colours')),
   };
 }

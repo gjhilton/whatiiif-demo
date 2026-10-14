@@ -45,6 +45,7 @@ export function buildManifest({ manifestId, imageId, pageUrl, info, config, hasF
       {
         id: canvasId,
         type: 'Canvas',
+        label: languageMap(config.title),
         width,
         height,
         items: [

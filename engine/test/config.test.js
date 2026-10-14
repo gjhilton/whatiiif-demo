@@ -2,16 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseConfig } from '../lib/config.js';
 
-const opts = { imageName: 'harbour-1890.tif' };
+const opts = {};
 
-test('an empty config gets defaults, with the title taken from the image filename', () => {
+test('an empty config gets defaults; the title is left to the picture to name', () => {
   const c = parseConfig('', opts);
   assert.equal(c.language, 'en');
-  assert.deepEqual(c.title, { en: 'harbour-1890' });
+  assert.equal(c.title, undefined);
+  assert.equal(c.alt, undefined);
+  assert.equal(c.picture, undefined);
   assert.equal(c.viewer, 'openseadragon');
   assert.equal(c.tiles.size, 512);
   assert.equal(c.tiles.quality, 85);
-  assert.equal(c.publish.full, true);
+  assert.deepEqual(c.publish, { full: true, original: true });
+  assert.deepEqual(c.colours, {});
   assert.deepEqual(c.metadata, []);
 });
 
@@ -35,6 +38,12 @@ quality = 70
 
 [publish]
 full = false
+original = false
+
+[colours]
+paper = "#FDF6E3"
+ink = "rgb(20 20 20 / 90%)"
+viewer = "black"
 `,
     opts,
   );
@@ -44,7 +53,13 @@ full = false
   assert.equal(c.base_url, 'https://iiif.example.org');
   assert.deepEqual(c.metadata, [{ label: { en: 'Date' }, value: { en: '1890' } }]);
   assert.equal(c.tiles.size, 256);
-  assert.equal(c.publish.full, false);
+  assert.deepEqual(c.publish, { full: false, original: false });
+  assert.deepEqual(c.colours, { paper: '#FDF6E3', ink: 'rgb(20 20 20 / 90%)', viewer: 'black' });
+});
+
+test('a picture too big to commit can be given by its web address instead', () => {
+  const url = 'https://github.com/gjh/harbour/releases/download/picture/Harbour%20scan.tif';
+  assert.equal(parseConfig(`picture = "${url}"`, opts).picture, url);
 });
 
 test('rejects a rights value that is not a URL, naming the field', () => {
@@ -55,8 +70,11 @@ test('rejects an unknown viewer and lists the valid ones', () => {
   assert.throws(() => parseConfig('viewer = "uv"', opts), /viewer.*openseadragon, mirador/);
 });
 
-test('rejects unknown keys so typos are not silently ignored', () => {
-  assert.throws(() => parseConfig('titel = "x"', opts), /unknown.*titel/i);
+test('rejects unknown keys so typos are not silently ignored, and suggests the setting meant', () => {
+  assert.throws(() => parseConfig('titel = "x"', opts), /unknown setting "titel"; did you mean "title"\? Valid settings here: language, title/);
+  assert.throws(() => parseConfig('[colors]\nink = "red"', opts), /unknown setting "colors"; did you mean "colours"\?/);
+  assert.throws(() => parseConfig('[tiles]\nqualty = 90', opts), /unknown setting "tiles\.qualty"; did you mean "quality"\?/);
+  assert.throws(() => parseConfig('flavour = "x"', opts), /unknown setting "flavour"\. Valid settings here/);
 });
 
 test('reports TOML syntax errors in plain English', () => {
@@ -70,6 +88,15 @@ const rights = [
   ['https://creativecommons.org/publicdomain/zero/1.0/', 'http://creativecommons.org/publicdomain/zero/1.0/'],
   ['https://rightsstatements.org/vocab/InC/1.0/', 'http://rightsstatements.org/vocab/InC/1.0/'],
   ['http://creativecommons.org/licenses/by-nc/4.0/', 'http://creativecommons.org/licenses/by-nc/4.0/'],
+  // What the address bar shows on those sites' own pages, which is what people copy.
+  ['https://creativecommons.org/licenses/by/4.0/deed.en', 'http://creativecommons.org/licenses/by/4.0/'],
+  ['https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.de', 'http://creativecommons.org/licenses/by-nc-sa/4.0/'],
+  ['https://creativecommons.org/licenses/by/4.0', 'http://creativecommons.org/licenses/by/4.0/'],
+  ['https://creativecommons.org/licenses/by/3.0/de/deed.de', 'http://creativecommons.org/licenses/by/3.0/de/'],
+  ['https://creativecommons.org/publicdomain/zero/1.0/deed.cy', 'http://creativecommons.org/publicdomain/zero/1.0/'],
+  ['https://creativecommons.org/publicdomain/mark/1.0/?ref=chooser-v1', 'http://creativecommons.org/publicdomain/mark/1.0/'],
+  ['https://rightsstatements.org/page/InC/1.0/?language=en', 'http://rightsstatements.org/vocab/InC/1.0/'],
+  ['https://rightsstatements.org/vocab/NoC-US/1.0', 'http://rightsstatements.org/vocab/NoC-US/1.0/'],
 ];
 
 for (const [given, canonical] of rights) {
@@ -105,22 +132,23 @@ value = "1890"
   assert.deepEqual(c.metadata, [{ label: { cy: 'Dyddiad', en: 'Date' }, value: { cy: '1890' } }]);
 });
 
-test('the image file name becomes the title in the site language', () => {
-  assert.deepEqual(parseConfig('language = "de-CH"', opts).title, { 'de-CH': 'harbour-1890' });
+test('language codes are written the standard way, whatever case they were typed in', () => {
+  const c = parseConfig('language = "CY-gb"\ntitle = { EN = "Harbour", "zh-hant" = "港口", none = "1890" }', opts);
+  assert.equal(c.language, 'cy-GB');
+  assert.deepEqual(c.title, { en: 'Harbour', 'zh-Hant': '港口', none: '1890' });
 });
 
 test('text in no particular language uses the IIIF tag "none"', () => {
   assert.deepEqual(parseConfig('language = "none"\nsummary = "1890"', opts).summary, { none: '1890' });
 });
 
-test('alt text describes the image, and falls back to the title', () => {
-  assert.deepEqual(parseConfig('title = "Harbour"', opts).alt, { en: 'Harbour' });
+test('alt text describes the image', () => {
   assert.deepEqual(parseConfig('title = "Harbour"\nalt = "Fishing boats at dusk"', opts).alt, { en: 'Fishing boats at dusk' });
 });
 
 test('blank texts count as not given, and texts lose the spaces around them', () => {
   const c = parseConfig('title = "  "\nsummary = { en = "", cy = " Golygfa " }\nattribution = """\nExample Museum\n"""', opts);
-  assert.deepEqual(c.title, { en: 'harbour-1890' });
+  assert.equal(c.title, undefined);
   assert.deepEqual(c.summary, { cy: 'Golygfa' });
   assert.deepEqual(c.attribution, { en: 'Example Museum' });
 });
@@ -149,6 +177,15 @@ const mistakes = [
   ['[tiles]\nsize = 10000', /"tiles\.size" must be a whole number from 64 to 4096 \(got 10000\)/],
   ['[tiles]\nsize = "512"', /"tiles\.size" must be a whole number from 64 to 4096 \(got "512"\)/],
   ['[tiles]\nquality = 85.5', /"tiles\.quality" must be a whole number from 1 to 100 \(got 85\.5\)/],
+  ['[publish]\noriginal = "yes"', /"publish\.original" must be true or false, without quotes \(got "yes"\)/],
+  ['title = { en = "Harbour", EN = "Port" }', /"title" gives "en" twice/],
+  ['picture = "Harbour.tif"', /"picture" must be the web address of a picture, starting https:\/\/ \(got "Harbour\.tif"\)\. A picture in content\/ needs no setting\./],
+  ['picture = 3', /"picture" must be the web address of a picture/],
+  ['colours = "red"', /"colours" must be a section, \[colours\], not a single value/],
+  ['[colours]\nink = "inky black"', /"colours\.ink" must be a CSS colour, such as "#1a1a1a", "black" or "rgb\(26 26 26\)" \(got "inky black"\)/],
+  ['[colours]\npaper = "red; } body { display: none"', /"colours\.paper" must be a CSS colour/],
+  ['[colours]\npaper = "#12345"', /"colours\.paper" must be a CSS colour/],
+  ['[colours]\npaper = 0xffffff', /"colours\.paper" must be a CSS colour, .* \(got 16777215\)/],
 ];
 
 for (const [toml, says] of mistakes) {

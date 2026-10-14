@@ -40,8 +40,10 @@ test(`the Update workflow offers ${latest} as a pull request that leaves content
   [offer] = await ghJson('pr', 'list', '-R', trial.repository, '--json', 'number,title,body');
   assert.equal(offer?.title, `Update whatiiif to ${latest.replace(/^v/, '')}`);
   assert.match(offer.body, /Your `content\/` is untouched/);
-  const workflowsChanged = (await run('git', ['diff', '--quiet', previous, latest, '--', '.github/workflows'], { cwd: template })).code !== 0;
-  assert.equal(/Workflow files changed upstream/.test(offer.body), workflowsChanged, 'the pull request says whether workflow files need copying by hand');
+  // ci.yml and live.yml run only in the template, so they are not passed on. The wording is the previous release's.
+  const workflows = ['.github/workflows', ':!.github/workflows/ci.yml', ':!.github/workflows/live.yml'];
+  const workflowsChanged = (await run('git', ['diff', '--quiet', previous, latest, '--', ...workflows], { cwd: template })).code !== 0;
+  assert.equal(/Workflow files changed upstream|\*\*Copy by hand:\*\*/.test(offer.body), workflowsChanged, 'the pull request says whether workflow files need copying by hand');
   const files = (await gh('pr', 'diff', String(offer.number), '-R', trial.repository, '--name-only')).split('\n');
   assert.ok(files.includes('engine/VERSION'), files.join(', '));
   assert.deepEqual(files.filter((file) => !file.startsWith('engine/') && !/^package(-lock)?\.json$/.test(file)), []);

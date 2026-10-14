@@ -1,4 +1,7 @@
+// Where visitors can download the file a site was made from: the original stays in the repository (or wherever
+// its link points), and the site links to it there.
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { basename, dirname } from 'node:path';
 
@@ -26,4 +29,19 @@ export function originalUrl({ repo, ref, path, lfs }) {
   const host = lfs ? 'media.githubusercontent.com/media' : 'raw.githubusercontent.com';
   const encoded = `${ref}/${path}`.split('/').map(encodeURIComponent).join('/');
   return `https://${host}/${repo}/${encoded}`;
+}
+
+/**
+ * Whether anyone may download files from the repository the workflow runs in. GitHub describes the event that
+ * started the run in the file at GITHUB_EVENT_PATH; outside a workflow, or if that says nothing, it is taken to be
+ * public, as the README asks a new repository to be.
+ */
+export async function repositoryIsPublic(env) {
+  if (!env.GITHUB_EVENT_PATH) return true;
+  try {
+    const { repository } = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
+    return (repository?.visibility ?? (repository?.private ? 'private' : 'public')) === 'public';
+  } catch {
+    return true;
+  }
 }

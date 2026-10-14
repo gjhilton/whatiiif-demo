@@ -1,7 +1,7 @@
 // What the page looks like in each state a visitor can meet, compared with reviewed screenshots. The sites are
 // built from a template copy as the Deploy workflow builds them, with a picture drawn the same way every time.
 import { test, expect } from '@playwright/test';
-import { copyFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { browse, commit, deploy, templateCopy } from '../support/harness.js';
@@ -66,8 +66,8 @@ quality = 100
 });
 
 /** Opens a site and waits until the page, its viewer and its pictures have finished arriving. */
-async function open(browser, site, { query = '', viewport, javaScriptEnabled, before } = {}) {
-  const opened = await browse(browser, { ...site, query, javaScriptEnabled });
+async function open(browser, site, { query = '', viewport, javaScriptEnabled, colorScheme, before } = {}) {
+  const opened = await browse(browser, { ...site, query, javaScriptEnabled, colorScheme });
   if (viewport) await opened.page.setViewportSize(viewport);
   if (before) {
     await before(opened.page);
@@ -91,6 +91,23 @@ test('the page, in Mirador', async ({ browser }) => {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(2000); // Mirador fades its picture in
   await expect(page).toHaveScreenshot('mirador.png', { fullPage: true, maxDiffPixelRatio: 0.01 });
+  expect(problems).toEqual([]);
+  await close();
+});
+
+test('the page in dark mode, in OpenSeadragon', async ({ browser }) => {
+  const { page, problems, close } = await open(browser, one, { query: '?viewer=openseadragon', colorScheme: 'dark' });
+  await expect(page).toHaveScreenshot('dark.png', { fullPage: true });
+  expect(problems).toEqual([]);
+  await close();
+});
+
+test('the page in dark mode, in Mirador', async ({ browser }) => {
+  const { page, problems, close } = await open(browser, one, { query: '?viewer=mirador', colorScheme: 'dark' });
+  await page.locator('.mirador-window').waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(2000); // Mirador fades its picture in
+  await expect(page).toHaveScreenshot('dark-mirador.png', { fullPage: true, maxDiffPixelRatio: 0.01 });
   expect(problems).toEqual([]);
   await close();
 });
@@ -132,8 +149,25 @@ test('the viewer could not load: said in red', async ({ browser }) => {
   await close();
 });
 
+test('the viewer could not load, in dark mode: said in a red that reads on black', async ({ browser }) => {
+  const { page, close } = await open(browser, one, {
+    colorScheme: 'dark',
+    before: (p) => p.route('**/assets/openseadragon-*.js', (route) => route.fulfill({ contentType: 'text/javascript', body: 'throw new Error("its code did not arrive");' })),
+  });
+  await expect(page.locator('.viewer-error')).toHaveCSS('color', 'rgb(255, 85, 85)');
+  await expect(page).toHaveScreenshot('dark-viewer-error.png', { fullPage: true });
+  await close();
+});
+
 test('the page could not load its details: said in red', async ({ browser }) => {
-  const { page, close } = await open(browser, one, { before: (p) => p.route('**/site.json', (route) => route.fulfill({ status: 404 })) });
+  // The details are written into the page, and in site.json for a page without them: take away both.
+  const without = (await readFile(one.fileFor('index.html'), 'utf8')).replace(/<script type="application\/json" id="whatiiif-site">.*?<\/script>/s, '');
+  const { page, close } = await open(browser, one, {
+    before: async (p) => {
+      await p.route((url) => url.pathname === '/harbour/', (route) => route.fulfill({ contentType: 'text/html', body: without }));
+      await p.route('**/site.json', (route) => route.fulfill({ status: 404 }));
+    },
+  });
   await expect(page.locator('.load-error')).toBeVisible();
   await expect(page).toHaveScreenshot('load-error.png', { fullPage: true });
   await close();

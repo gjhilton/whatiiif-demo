@@ -1,7 +1,7 @@
 import Mirador from 'mirador';
 import type { ViewerAdapter } from './types';
 import type { Region } from '../address';
-import { pageColour } from '../colours';
+import { darkPage, pageColour } from '../colours';
 
 interface ViewerState {
   x: number;
@@ -29,6 +29,25 @@ const toRegion = ({ x, y, zoom }: ViewerState, aspect: number): Region => {
   return { x: x - w / 2, y: y - h / 2, w, h };
 };
 
+/**
+ * The page's colours in place of Mirador's blue and grey. On a dark page Mirador's own dark theme is chosen, for its
+ * light words on dark, and given the page's colours too, or its teal would show instead.
+ */
+function theme() {
+  const palette = {
+    primary: { main: pageColour('--ink') },
+    secondary: { main: pageColour('--ink') },
+    error: { main: pageColour('--error') },
+    shades: { dark: pageColour('--viewer') },
+  };
+  if (!darkPage()) return { theme: { palette } };
+  const paper = pageColour('--paper');
+  const dark = { ...palette, mode: 'dark', shades: { ...palette.shades, main: paper, light: paper }, background: { default: paper, paper } };
+  // MUI lightens raised surfaces in dark mode; here black stays black, as white does on a light page.
+  const flat = { MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } } };
+  return { selectedTheme: 'dark', theme: { palette: dark, components: flat }, themes: { dark: { palette: dark } } };
+}
+
 const adapter: ViewerAdapter = {
   mount(el, site, { language, region, onRegionChange }) {
     el.id = 'mirador-root';
@@ -47,44 +66,53 @@ const adapter: ViewerAdapter = {
       window: { allowClose: false, allowMaximize: false, sideBarOpen: false },
       workspace: { isWorkspaceAddVisible: false },
       workspaceControlPanel: { enabled: false },
-      // The page's colours in place of Mirador's blue and grey.
-      theme: {
-        palette: {
-          primary: { main: pageColour('--ink') },
-          secondary: { main: pageColour('--ink') },
-          error: { main: pageColour('--error') },
-          shades: { dark: pageColour('--viewer') },
-        },
-      },
+      ...theme(),
     }) as MiradorInstance;
+    const view = () => instance.store.getState().viewers[WINDOW];
 
-    // Mirador opens on the whole picture and reports that view first (it overwrites a window's initialViewerConfig),
-    // so a shared view is applied after that, in two steps: Mirador zooms around where the centre is on screen at
-    // the time, so panning and zooming at once would land off target.
-    const shared = region && toView(region, aspect());
-    const steps: Partial<ViewerState>[] = shared ? [{ x: shared.x, y: shared.y }, { zoom: shared.zoom }] : [];
-    let seen: ViewerState | undefined;
+    // Mirador zooms around where the centre is on screen at the time, so panning and zooming at once would land off
+    // target: a part of the picture is shown in two steps, a pan and then a zoom, each asked for once Mirador has
+    // reported where the one before took it. A step that would not move it is skipped, as no report would follow.
+    const steps: Partial<ViewerState>[] = [];
+    const already = (at: ViewerState, step: Partial<ViewerState>) =>
+      'zoom' in step ? Math.abs(at.zoom / step.zoom! - 1) < 1e-3 : Math.abs(at.x - step.x!) < 1 && Math.abs(at.y - step.y!) < 1;
     let asking = false; // the state changes our own requests make are not reports of where Mirador is
-    const ask = (step: Partial<ViewerState>) => {
+    const next = () => {
+      const at = view();
+      let step = steps.shift();
+      while (step && at && already(at, step)) step = steps.shift();
+      if (!step) return false;
       asking = true;
       instance.store.dispatch(Mirador.actions.updateViewport(WINDOW, step as ViewerState));
       asking = false;
+      return true;
+    };
+    const stepsTo = (part: Region) => {
+      const { x, y, zoom } = toView(part, aspect());
+      steps.splice(0, steps.length, { x, y }, { zoom });
     };
 
+    // Mirador opens on the whole picture and reports that view first (it overwrites a window's
+    // initialViewerConfig), so a shared view is applied after that.
+    if (region) stepsTo(region);
+    let seen: ViewerState | undefined;
     const unsubscribe = instance.store.subscribe(() => {
-      const view = instance.store.getState().viewers[WINDOW];
-      if (!view || view === seen || view.zoom === undefined) return;
-      seen = view;
-      if (asking) return;
-      let step = steps.shift();
-      if (step && 'x' in step && Math.abs(view.x - step.x!) < 1 && Math.abs(view.y - step.y!) < 1) step = steps.shift(); // already there
-      if (step) return ask(step);
-      onRegionChange(toRegion(view, aspect()));
+      const at = view();
+      if (!at || at === seen || at.zoom === undefined) return;
+      seen = at;
+      if (asking || next()) return;
+      onRegionChange(toRegion(at, aspect()));
     });
 
-    return () => {
-      unsubscribe();
-      instance.unmount?.();
+    return {
+      show(part) {
+        stepsTo(part);
+        if (view()?.zoom !== undefined) next(); // otherwise Mirador's first report starts them
+      },
+      destroy() {
+        unsubscribe();
+        instance.unmount?.();
+      },
     };
   },
 };

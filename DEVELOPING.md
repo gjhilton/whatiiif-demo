@@ -3,13 +3,16 @@
 ## How it works
 
 `content/` belongs to whoever uses the template; everything else belongs to the template. On every push that
-touches either, the **Deploy** workflow (`.github/workflows/deploy.yml`) checks that `content/` holds an image
-(`engine/ci/has-image.js`). It then runs `engine/ci/build.sh`, which builds the page (`engine/client/`, React and
-Vite) and then the site from the picture (`engine/build.js`, which runs `engine/lib/build.js`):
+touches either, the **Deploy** workflow (`.github/workflows/deploy.yml`) checks that `content/` holds an image, or
+that `whatiiif.toml` links to one (`engine/ci/has-image.js`). It then runs `engine/ci/build.sh`, which builds the page
+(`engine/client/`, React and Vite) and then the site from the picture (`engine/build.js`, which runs
+`engine/lib/build.js`). In a workflow run, `engine/build.js` also puts anything that went wrong, or is worth a look,
+at the top of the run's page as annotations, with a summary below them (`report.js`).
 
-- `content.js` reads `content/`: the one picture (`source.js`, which needs no npm packages because `has-image.js`
-  runs before any are installed), `whatiiif.toml` through `config.js`, which explains every mistake in a sentence,
-  and the descriptions, turned into HTML.
+- `content.js` reads `content/`: the one picture, or the one its `picture` setting links to, downloaded and told
+  apart by its first bytes (`source.js`, which needs no npm packages because `has-image.js` runs before any are
+  installed); `whatiiif.toml` through `config.js`, which explains every mistake in a sentence and suggests the
+  setting meant (`spelling.js`); the descriptions, turned into HTML; and notes on any file it will not use.
 - `slice.js` cuts the picture into IIIF Image API 3.0 level 0 tiles with [sharp](https://sharp.pixelplumbing.com)
   (libvips). It first turns the image upright, flattens transparency onto white, converts it to sRGB using its
   colour profile, and drops its EXIF.
@@ -17,14 +20,19 @@ Vite) and then the site from the picture (`engine/build.js`, which runs `engine/
   ask for, and which of those a folder is missing. The build refuses to deploy a service that is missing any.
 - `budget.js` leaves out the full-size JPEG if the site would otherwise exceed GitHub Pages' size limit.
 - `manifest.js` writes the IIIF Presentation 3.0 manifest. The original file is not published; the manifest links
-  to it in the repository (`original.js`).
-- `page.js` writes the title, social-card tags and a no-JavaScript fallback into the built page. The page itself
-  loads `site.json` when it opens, so it is the same for every image.
+  to it in the repository (`original.js`), unless the repository is private or the owner says not to, or at the
+  address it was downloaded from.
+- `page.js` writes the title, icon (cut from the picture), the owner's colours, social-card tags, a no-JavaScript
+  fallback and `site.json` itself into the built page, between marker comments, so the page Vite builds is the same
+  for every image. A page without them (Vite's own) loads `site.json` instead.
 
 The page (`engine/client/src/`): `App.tsx` holds what is on screen (viewer, language, part of the picture),
-`address.ts` reads and writes the page's address so that any view is a link, `language.ts` chooses the visitor's
-language, and `viewers/` holds one adapter per viewer, each downloaded only when it is chosen. Every colour is in
-`colours.css`; nothing else names one, and both viewers take theirs from it.
+`address.ts` reads and writes the page's address so that any view is a link (and a link in the description can
+point at a detail), `language.ts` chooses the visitor's language, `describe.ts` names licences and downloads, and
+`viewers/` holds one adapter per viewer, each downloaded only when it is chosen. An adapter mounts its viewer, can
+move it to a part of the picture, and reports where the visitor has moved it. Every colour is in `colours.css`, with
+black and white swapped for dark mode; nothing else names one, and both viewers take theirs from it (`colours.ts`),
+opening again if the computer switches between light and dark.
 
 Copies of the template call `engine/ci/has-image.js`, `engine/ci/build.sh`, `engine/ci/update.sh` and
 `engine/.node-version` from workflow files that the Update workflow cannot change, so those paths must stay put.
@@ -85,6 +93,8 @@ Two checks cover those:
   - `github.live.js` puts this commit of the template in its repository and does what a newcomer might. It uploads
     a picture before switching Pages on and expects the run to say how to fix that, switches Pages on and re-runs,
     then pushes a picture too big for the browser through Git LFS, sized so the site comes near the Pages limit.
+  - `release.live.js` puts a picture twice the browser's upload limit into a release of its repository, links to it
+    in `whatiiif.toml` as the README says, and checks the site and the original's download.
   - `update.live.js` starts its repository on the previous release, publishes a picture, runs the Update workflow
     and expects a pull request for the latest release that changes only `engine/` and the package files. Merging
     it must republish the site. Run it after each release.

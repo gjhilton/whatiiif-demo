@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { cardImage, pageFallback, pageHead, personalisePage } from '../lib/page.js';
+import { cardImage, pageBody, pageHead, personalisePage } from '../lib/page.js';
 import { tempDir } from './support/tmp.js';
 
 const imageId = 'https://gjh.github.io/harbour/iiif/image';
@@ -19,7 +19,7 @@ const site = {
 };
 
 test('a card shows the largest whole-image file up to 1200 pixels wide', () => {
-  assert.deepEqual(cardImage({ info, imageId }), { url: `${imageId}/full/750,500/0/default.jpg`, width: 750, height: 500 });
+  assert.deepEqual(cardImage({ info, imageId }), { path: 'full/750,500/0/default.jpg', url: `${imageId}/full/750,500/0/default.jpg`, width: 750, height: 500 });
 });
 
 test('a card for a tall picture is no more than 1200 pixels tall either', () => {
@@ -29,11 +29,12 @@ test('a card for a tall picture is no more than 1200 pixels tall either', () => 
 
 test('a card shows the smallest size when every size is bigger, rather than the full-size file, which may not be published', () => {
   const bigTiles = { width: 4000, height: 3000, sizes: [{ width: 2000, height: 1500 }] };
-  assert.deepEqual(cardImage({ info: bigTiles, imageId }), { url: `${imageId}/full/2000,1500/0/default.jpg`, width: 2000, height: 1500 });
+  assert.deepEqual(cardImage({ info: bigTiles, imageId }), { path: 'full/2000,1500/0/default.jpg', url: `${imageId}/full/2000,1500/0/default.jpg`, width: 2000, height: 1500 });
 });
 
 test('a card for an image small enough for one tile shows the image itself', () => {
   assert.deepEqual(cardImage({ info: { width: 300, height: 200, sizes: [] }, imageId }), {
+    path: 'full/max/0/default.jpg',
     url: `${imageId}/full/max/0/default.jpg`,
     width: 300,
     height: 200,
@@ -55,6 +56,8 @@ test('the head names the image and gives social sites an absolute picture, all s
     '<meta property="og:image:height" content="500">',
     '<meta property="og:image:alt" content="Fishing boats &amp; a pier">',
     '<meta name="twitter:card" content="summary_large_image">',
+    '<link rel="icon" href="icon.png">',
+    '<link rel="apple-touch-icon" href="icon.png">',
   ]) {
     assert.ok(head.includes(tag), tag);
   }
@@ -66,8 +69,14 @@ test('without a summary the description falls back to the title', () => {
   assert.equal(head.includes('og:description'), false);
 });
 
+test('the head sets no colours of its own unless some are chosen', () => {
+  assert.equal(pageHead({ site, image: cardImage({ info, imageId }) }).includes('<style>'), false);
+  const head = pageHead({ site: { ...site, colours: { paper: '#000', viewer: 'black' } }, image: cardImage({ info, imageId }) });
+  assert.ok(head.includes('<style>html:root { --paper: #000; --viewer: black; }</style>'));
+});
+
 test('the fallback for browsers without JavaScript shows the picture, described, with its links', () => {
-  const fallback = pageFallback({ site, image: cardImage({ info, imageId }) });
+  const fallback = pageBody({ site, image: cardImage({ info, imageId }) });
   assert.match(fallback, /^<noscript>/);
   for (const part of [
     '<h1 lang="en">Harbour &quot;at&quot; &lt;dusk&gt; &amp; dawn</h1>',
@@ -75,10 +84,18 @@ test('the fallback for browsers without JavaScript shows the picture, described,
     `<img src="${imageId}/full/750,500/0/default.jpg" width="750" height="500" alt="Fishing boats &amp; a pier" lang="en">`,
     '<a href="https://gjh.github.io/harbour/iiif/manifest.json">IIIF manifest</a>',
     '<a href="https://gjh.github.io/harbour/iiif/image/full/max/0/default.jpg">Full-size JPEG</a>',
-    '<a href="https://raw.githubusercontent.com/gjh/harbour/main/content/a.tif">Original file</a>',
+    // Not for crawlers: downloads of a picture in Git LFS count against its owner's monthly allowance.
+    '<a href="https://raw.githubusercontent.com/gjh/harbour/main/content/a.tif" rel="nofollow">Original file</a>',
   ]) {
     assert.ok(fallback.includes(part), part);
   }
+});
+
+test('the page carries the site\'s details as data that no text in them can break out of', () => {
+  const body = pageBody({ site: { ...site, summary: { en: '</script><script>alert(1)</script>' } }, image: cardImage({ info, imageId }) });
+  const data = body.match(/<script type="application\/json" id="whatiiif-site">(.*?)<\/script>/s)[1];
+  assert.equal(data.includes('</script>'), false);
+  assert.deepEqual(JSON.parse(data).summary, { en: '</script><script>alert(1)</script>' });
 });
 
 const builtPage = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />

@@ -32,18 +32,36 @@ export function withinImage(region: Region, site: Site): Region | undefined {
 
 const fragment = (region?: Region) => (region ? `#xywh=${region.x},${region.y},${region.w},${region.h}` : '');
 
+/** The part of the picture a fragment such as `#xywh=100,200,300,400` names, if it names one. */
+function regionIn(hash: string, site: Site): Region | undefined {
+  const match = /^#xywh=(?:pixel:)?(\d+),(\d+),(\d+),(\d+)$/.exec(hash);
+  if (!match) return undefined;
+  const [x, y, w, h] = match.slice(1).map(Number);
+  return withinImage({ x, y, w, h }, site);
+}
+
 /** What `href` asks for, keeping only what makes sense for this site and the `viewers` the page offers. */
 export function readAddress(href: string, site: Site, viewers: readonly string[]): Asked {
   const url = new URL(href);
   const viewer = url.searchParams.get('viewer');
-  const match = /^#xywh=(?:pixel:)?(\d+),(\d+),(\d+),(\d+)$/.exec(url.hash);
-  const [x, y, w, h] = match ? match.slice(1).map(Number) : [];
   return {
     viewer: viewer && viewers.includes(viewer) ? (viewer as ViewerId) : undefined,
     language: url.searchParams.get('lang') ?? undefined,
-    region: match ? withinImage({ x, y, w, h }, site) : undefined,
+    region: regionIn(url.hash, site),
     embed: url.searchParams.has('embed'),
   };
+}
+
+/**
+ * The part of the picture a link on the page at `here` shows, if it links to this page: a fragment on its own,
+ * or a link to the page as published, copied from "Link to this view". Its viewer and language are not a choice
+ * the visitor made, so only the part of the picture counts.
+ */
+export function regionLinked(href: string, site: Site, here: string): Region | undefined {
+  const url = new URL(href, here);
+  const page = ({ origin, pathname }: URL) => origin + pathname;
+  if (page(url) !== page(new URL(here)) && page(url) !== page(new URL(site.pageUrl))) return undefined;
+  return regionIn(url.hash, site);
 }
 
 /** `href` with `key=value` in its query, as when the visitor chooses a viewer or a language. */
@@ -68,6 +86,13 @@ export function linkTo(site: Site, { viewer, language, region, embed = false }: 
 
 const attribute = (text: string) => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
-/** HTML that puts the picture, at the view in `src`, on someone else's web page. */
-export const embedCode = (src: string, title: string) =>
-  `<iframe src="${attribute(src)}" width="800" height="600" style="border:0" allowfullscreen loading="lazy" title="${attribute(title)}"></iframe>`;
+/**
+ * HTML that puts the picture, at the view in `src`, on someone else's web page: 800 pixels wide, or the width of a
+ * narrower page, and the shape of the picture, kept between two to one and three to four.
+ */
+export function embedCode(src: string, title: string, { width, height }: Pick<Site, 'width' | 'height'>): string {
+  const shape = Math.min(2, Math.max(3 / 4, width / height));
+  const [w, h] = [800, Math.round(800 / shape)];
+  const style = `border:0;width:100%;max-width:${w}px;height:auto;aspect-ratio:${w}/${h}`;
+  return `<iframe src="${attribute(src)}" width="${w}" height="${h}" style="${style}" allowfullscreen loading="lazy" title="${attribute(title)}"></iframe>`;
+}

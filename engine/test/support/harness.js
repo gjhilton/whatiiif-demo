@@ -101,13 +101,14 @@ export const ELSEWHERE = 'https://elsewhere.example/post.html';
  * goes wrong: a file that is not published, a request to another site, an error in the page's scripts.
  * With `fileFor`, every request is answered with the file it names, so no web server is needed; without
  * it the site is fetched over the network, as a visitor would. With `elsewhere`, the page opened is instead
- * one at ELSEWHERE holding that HTML.
+ * one at ELSEWHERE holding that HTML. `colorScheme` is the visitor's choice of light or dark.
  */
-export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', javaScriptEnabled = true, elsewhere }) {
+export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', colorScheme = 'light', javaScriptEnabled = true, elsewhere }) {
   const context = await browser.newContext({
     viewport: { width: 1200, height: 900 },
     permissions: ['clipboard-read', 'clipboard-write'],
     locale,
+    colorScheme,
     javaScriptEnabled,
   });
   const page = await context.newPage();
@@ -151,13 +152,19 @@ export async function until(condition, what, timeout = 30_000) {
 // Full-resolution pixels: a tile as many pixels across as the region it covers, or the whole image at its own size.
 const FULL_RESOLUTION = /^iiif\/image\/(?:full\/max|\d+,\d+,(\d+),(\d+)\/\1,\2)\/0\/default\.jpg$/;
 
-/** Scrolls in at the middle of the viewer until it has asked for full-resolution pixels, then lets it settle. */
-export async function zoomToFullResolution({ page, fetched }) {
-  const box = await page.locator('.viewer').boundingBox();
+/**
+ * Scrolls in at the middle of the viewer until it has asked for full-resolution pixels, then lets it settle. Inside
+ * someone else's page the viewer zooms only while Control is held (a plain scroll scrolls that page), so `holding`
+ * names a key to hold; `within` is the frame the viewer is in, if it is in one.
+ */
+export async function zoomToFullResolution({ page, fetched }, { holding, within = page } = {}) {
+  const box = await within.locator('.viewer').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  if (holding) await page.keyboard.down(holding);
   await until(async () => {
     await page.mouse.wheel(0, -300);
     return fetched.some((path) => FULL_RESOLUTION.test(path));
   }, 'full-resolution pixels to be requested');
+  if (holding) await page.keyboard.up(holding);
   await page.waitForLoadState('networkidle');
 }

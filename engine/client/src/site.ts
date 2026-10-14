@@ -19,20 +19,31 @@ export interface Site {
   /** HTML made from content/description*.md when the site was built. */
   description?: Text;
   viewer: ViewerId;
+  /** Colours chosen in whatiiif.toml, by their names in colours.css; the build writes them into the page. */
+  colours?: Record<string, string>;
   manifestUrl: string;
   /** The manifest's one canvas; Mirador keeps a starting view only when it is told which canvas to open. */
   canvasId: string;
   infoUrl: string;
   fullUrl?: string;
+  fullBytes?: number;
+  /** Where the picture the site was made from can be downloaded, if it can, with its media type and size. */
   originalUrl?: string;
+  originalFormat?: string;
+  originalBytes?: number;
   width: number;
   height: number;
   /** The page's own public address. */
   pageUrl: string;
 }
 
-/** Loaded when the page opens, so the same built page serves any image. */
+/**
+ * The build writes the site's details into the page it personalises, so they need no second request; a page it
+ * has not personalised (as Vite serves it while the page is being worked on) asks for site.json instead.
+ */
 export async function loadSite(): Promise<Site> {
+  const written = document.getElementById('whatiiif-site')?.textContent;
+  if (written) return JSON.parse(written);
   const response = await fetch('./site.json');
   if (!response.ok) throw new Error(`site.json answered ${response.status}`);
   return response.json();
