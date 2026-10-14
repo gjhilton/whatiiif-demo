@@ -19,7 +19,21 @@ if (!siteUrl) throw new Error('Set E2E_SITE_URL to the address of the site to ch
 
 const fileFor = dist && ((path) => join(dist, path));
 const json = async (path) => JSON.parse(dist ? await readFile(join(dist, path), 'utf8') : await (await fetch(`${siteUrl}/${path}`)).text());
-const published = async (path) => (dist ? readFile(join(dist, path)).then(() => true, () => false) : (await fetch(`${siteUrl}/${path}`, { method: 'HEAD' })).ok);
+
+/**
+ * Whether a file is published. Over the network a connection now and then times out among the thousand or so
+ * requests a big picture needs, so a request that fails without an answer is tried again; a 404 is an answer.
+ */
+async function published(path) {
+  if (dist) return readFile(join(dist, path)).then(() => true, () => false);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return (await fetch(`${siteUrl}/${path}`, { method: 'HEAD' })).ok;
+    } catch (error) {
+      if (attempt === 3) throw new Error(`${path} could not be reached: ${error.cause?.code ?? error.message}`);
+    }
+  }
+}
 
 let browser;
 before(async () => {
