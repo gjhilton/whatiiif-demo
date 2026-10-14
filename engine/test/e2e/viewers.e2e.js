@@ -61,7 +61,12 @@ for (const [viewer, { label, surface }] of Object.entries(VIEWERS)) {
   test(`${label} fills the viewer pane`, async () => {
     const site = await open(viewer, '3000x2000');
     const drawn = await site.page.locator(surface).first().boundingBox();
-    assert.deepEqual(drawn, await site.page.locator('.viewer').boundingBox());
+    // The inside of the pane: its rules above and below are the page's, not the viewer's to fill.
+    const inside = await site.page.locator('.viewer').evaluate((pane) => {
+      const { x, y } = pane.getBoundingClientRect();
+      return { x: x + pane.clientLeft, y: y + pane.clientTop, width: pane.clientWidth, height: pane.clientHeight };
+    });
+    assert.deepEqual(drawn, inside);
     await site.close();
   });
 }

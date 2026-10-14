@@ -1,5 +1,6 @@
 import OpenSeadragon from 'openseadragon';
 import type { ViewerAdapter } from './types';
+import { pageColour } from '../colours';
 
 const adapter: ViewerAdapter = {
   mount(el, site, { region, onRegionChange }) {
@@ -9,6 +10,10 @@ const adapter: ViewerAdapter = {
       tileSources: site.infoUrl,
       showNavigator: true,
       navigatorPosition: 'BOTTOM_RIGHT',
+      // The page's colours in place of the overview map's black, grey and red.
+      navigatorBackground: pageColour('--viewer'),
+      navigatorBorderColor: pageColour('--ink'),
+      navigatorDisplayRegionColor: pageColour('--ink'),
       gestureSettingsMouse: { clickToZoom: false },
     });
     viewer.addOnceHandler('open', () => {

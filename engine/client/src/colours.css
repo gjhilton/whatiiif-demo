@@ -1,0 +1,11 @@
+/*
+ * Every colour on the page. Change a value here and build again: nothing else names a colour, and Mirador
+ * takes its colours from here too. Any CSS colour works: #000, black, rgb(0 0 0).
+ */
+:root {
+  color-scheme: light;
+  --paper: #ffffff; /* the background */
+  --ink: #000000; /* text, lines, borders, and the button that is selected */
+  --error: #cc0000; /* messages about something that went wrong */
+  --viewer: var(--paper); /* behind the picture */
+}

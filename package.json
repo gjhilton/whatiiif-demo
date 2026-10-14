@@ -11,6 +11,7 @@
     "test": "node --test \"engine/test/**/*.test.js\"",
     "test:e2e": "node --test \"engine/test/e2e/*.e2e.js\"",
     "test:live": "node --test engine/test/live/github.live.js",
+    "test:visual": "playwright test --config engine/test/visual/playwright.config.js",
     "typecheck": "tsc -p engine/client",
     "build": "npm run build:page && npm run build:iiif",
     "build:iiif": "node engine/build.js",
@@ -35,6 +36,7 @@
     "vite": "^8.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
     "@types/node": "^26.6.2",
     "@types/openseadragon": "^5.0.2",
     "@types/react": "^19.3.0",

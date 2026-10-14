@@ -23,6 +23,27 @@ jobs:
       - run: npx playwright install --with-deps chromium-headless-shell
       - run: npm run test:e2e
 
+  visual:
+    # What the page looks like, against the reviewed Linux screenshots in engine/test/visual/screenshots.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium-headless-shell
+      - run: npm run test:visual
+      - name: Keep the screenshots that differ (expected, actual and the difference), or new ones
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-differences
+          path: |
+            test-results/visual
+            engine/test/visual/screenshots/*-linux.png
+
   rehearsal:
     # The Deploy workflow's own steps on a sample image, short of the GitHub Pages actions themselves,
     # then the built site served over HTTP and opened in a browser.

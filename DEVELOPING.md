@@ -38,6 +38,15 @@ github.com, through Git LFS, in two languages, and with mistakes. It runs what t
 each site in both viewers, failing if either asks for a file that was not published. It also runs the Update
 workflow against a stand-in for GitHub.
 
+`npm run test:visual` compares the page, in each state a visitor can meet, with reviewed screenshots in
+`engine/test/visual/screenshots` (one set per operating system, since fonts differ; CI checks the Linux set). After
+a deliberate change to how the page looks, run `npm run test:visual -- --update-snapshots`, look at every new
+picture, and commit them. For the Linux set, push and take them from the failed CI run's `visual-differences`
+artifact.
+
+The page's colours are all in `engine/client/src/colours.css`; nothing else names a colour, and both viewers take
+theirs from it.
+
 To check a site that is already live:
 
 ```sh

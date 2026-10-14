@@ -1,5 +1,6 @@
 import type { ViewerAdapter } from './types';
 import type { Region } from '../view';
+import { pageColour } from '../colours';
 
 interface ViewerState {
   x: number;
@@ -50,6 +51,15 @@ const adapter: ViewerAdapter = {
         window: { allowClose: false, allowMaximize: false, sideBarOpen: false },
         workspace: { isWorkspaceAddVisible: false },
         workspaceControlPanel: { enabled: false },
+        // The page's colours in place of Mirador's blue and grey.
+        theme: {
+          palette: {
+            primary: { main: pageColour('--ink') },
+            secondary: { main: pageColour('--ink') },
+            error: { main: pageColour('--error') },
+            shades: { dark: pageColour('--viewer') },
+          },
+        },
       }) as MiradorInstance;
 
       // Mirador opens on the whole picture and reports that view first (it overwrites a window's initialViewerConfig),
