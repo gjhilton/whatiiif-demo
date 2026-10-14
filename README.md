@@ -1,5 +1,7 @@
 # ![whatiiif](engine/artwork/whatiffflogo.png)
 
+**See the demo: [gjhilton.github.io/whatiiif-demo](https://gjhilton.github.io/whatiiif-demo/)**
+
 Put one large picture on the web, zoomable, for free: a map, a manuscript page, a painting, a photograph.
 You upload the image to GitHub, and GitHub builds a website where anyone can zoom into it, share a link to any
 detail, or embed it in their own page. The picture is also published as [IIIF](https://iiif.io), the standard
@@ -89,4 +91,6 @@ requests**. It never touches your `content` folder.
 
 ---
 
-Working on whatiiif itself? See [DEVELOPING.md](DEVELOPING.md). MIT licence © g.j.hilton.
+Made by [Funeral Games](https://funeralgames.co.uk). MIT licence © g.j.hilton.
+
+Working on whatiiif itself? See [DEVELOPING.md](DEVELOPING.md).
