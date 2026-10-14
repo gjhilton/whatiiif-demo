@@ -9,8 +9,8 @@ import { execFile } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { tempDir } from '../tmp.js';
-import { repo as template, run } from '../e2e/harness.js';
+import { tempDir } from '../support/tmp.js';
+import { repo as template, run } from '../support/harness.js';
 
 const exec = promisify(execFile);
 export const MINUTE = 60_000;

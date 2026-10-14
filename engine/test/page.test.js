@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cardImage, pageFallback, pageHead, personalisePage } from '../lib/page.js';
-import { tempDir } from './tmp.js';
+import { tempDir } from './support/tmp.js';
 
 const imageId = 'https://gjh.github.io/harbour/iiif/image';
 const info = { width: 6000, height: 4000, sizes: [{ width: 375, height: 250 }, { width: 750, height: 500 }, { width: 1500, height: 1000 }] };
@@ -20,6 +20,16 @@ const site = {
 
 test('a card shows the largest whole-image file up to 1200 pixels wide', () => {
   assert.deepEqual(cardImage({ info, imageId }), { url: `${imageId}/full/750,500/0/default.jpg`, width: 750, height: 500 });
+});
+
+test('a card for a tall picture is no more than 1200 pixels tall either', () => {
+  const scroll = { width: 1000, height: 40000, sizes: [{ width: 8, height: 313 }, { width: 16, height: 625 }, { width: 32, height: 1250 }] };
+  assert.equal(cardImage({ info: scroll, imageId }).height, 625);
+});
+
+test('a card shows the smallest size when every size is bigger, rather than the full-size file, which may not be published', () => {
+  const bigTiles = { width: 4000, height: 3000, sizes: [{ width: 2000, height: 1500 }] };
+  assert.deepEqual(cardImage({ info: bigTiles, imageId }), { url: `${imageId}/full/2000,1500/0/default.jpg`, width: 2000, height: 1500 });
 });
 
 test('a card for an image small enough for one tile shows the image itself', () => {

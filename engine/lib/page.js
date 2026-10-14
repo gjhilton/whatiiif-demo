@@ -11,11 +11,13 @@ function inSiteLanguage(text, site) {
   return { text: escape(text[language]), lang: language === 'none' ? '' : ` lang="${escape(language)}"` };
 }
 
-/** The whole-image file a card or the fallback shows: the largest listed size up to `maxWidth`, else the image itself. */
-export function cardImage({ info, imageId, maxWidth = 1200 }) {
-  const size = [...info.sizes].reverse().find((s) => s.width <= maxWidth);
+/**
+ * The whole-image file a card or the fallback shows: the largest listed size no longer than `maxSide` on either side,
+ * else the smallest. Only an image that fits one tile lists no sizes, and that is always published as full/max.
+ */
+export function cardImage({ info, imageId, maxSide = 1200 }) {
+  const size = info.sizes.findLast((s) => Math.max(s.width, s.height) <= maxSide) ?? info.sizes[0];
   if (size) return { url: `${imageId}/full/${size.width},${size.height}/0/default.jpg`, width: size.width, height: size.height };
-  // With no sizes listed the image fits one tile, which is published as full/max.
   return { url: `${imageId}/full/max/0/default.jpg`, width: info.width, height: info.height };
 }
 

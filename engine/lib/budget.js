@@ -1,6 +1,6 @@
 import { readdir, stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expectedRequests } from './requests.js';
+import { expectedRequests } from './service.js';
 
 export const PAGES_BUDGET_BYTES = 900 * 1024 * 1024; // GitHub Pages sites are capped at 1 GB
 

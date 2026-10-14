@@ -6,8 +6,7 @@ import assert from 'node:assert/strict';
 import { copyFile, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build as buildWithVite } from 'vite';
-import { tempDir } from '../tmp.js';
+import { tempDir } from './tmp.js';
 
 const exec = promisify(execFile);
 export const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -79,6 +78,7 @@ export async function deploy(dir, { baseUrl = 'https://example.github.io/my-imag
 /** Builds the preview page on its own; it is the same for every image. */
 export async function buildPage() {
   const outDir = await tempDir('page');
+  const { build: buildWithVite } = await import('vite');
   await buildWithVite({ configFile: join(repo, 'engine/client/vite.config.ts'), build: { outDir }, logLevel: 'error' });
   return outDir;
 }
@@ -93,13 +93,17 @@ const TYPES = {
   '.svg': 'image/svg+xml',
 };
 
+// A page on someone else's site, such as a blog post holding the embed code.
+export const ELSEWHERE = 'https://elsewhere.example/post.html';
+
 /**
  * Opens the site at `siteUrl` (plus `query`) in a new page and records what it fetches and anything that
  * goes wrong: a file that is not published, a request to another site, an error in the page's scripts.
  * With `fileFor`, every request is answered with the file it names, so no web server is needed; without
- * it the site is fetched over the network, as a visitor would.
+ * it the site is fetched over the network, as a visitor would. With `elsewhere`, the page opened is instead
+ * one at ELSEWHERE holding that HTML.
  */
-export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', javaScriptEnabled = true }) {
+export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', javaScriptEnabled = true, elsewhere }) {
   const context = await browser.newContext({
     viewport: { width: 1200, height: 900 },
     permissions: ['clipboard-read', 'clipboard-write'],
@@ -114,6 +118,7 @@ export async function browse(browser, { siteUrl, fileFor, query = '', locale = '
   const pathOf = (url) => decodeURIComponent(new URL(url).pathname).slice(folder.length) || 'index.html';
   await context.route('**/*', async (route) => {
     const url = route.request().url();
+    if (elsewhere !== undefined && url === ELSEWHERE) return route.fulfill({ contentType: 'text/html', body: elsewhere });
     if (!url.startsWith(`${siteUrl}/`)) {
       problems.push(`request to another site: ${url}`);
       return route.abort();
@@ -131,7 +136,7 @@ export async function browse(browser, { siteUrl, fileFor, query = '', locale = '
     if (response.ok()) fetched.push(pathOf(response.url()));
     else problems.push(`not published: ${pathOf(response.url())}`);
   });
-  await page.goto(`${siteUrl}/${query}`);
+  await page.goto(elsewhere === undefined ? `${siteUrl}/${query}` : ELSEWHERE);
   return { page, fetched, problems, close: () => context.close() };
 }
 

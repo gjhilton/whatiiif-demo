@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import { access, copyFile, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { validate } from '../../lib/validate.js';
-import { inspect, makeImage, makePhonePhoto, makeVariant } from '../fixtures.js';
-import { schemaProblems, schemaUnavailable } from '../schema.js';
-import { browse, commit, deploy, git, run, templateCopy, until, zoomToFullResolution } from './harness.js';
+import { missingFiles } from '../../lib/service.js';
+import { inspect, makeImage, makePhonePhoto, makeVariant } from '../support/fixtures.js';
+import { schemaProblems, schemaUnavailable } from '../support/schema.js';
+import { browse, commit, deploy, git, run, templateCopy, until, zoomToFullResolution } from '../support/harness.js';
 
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
 const exists = (path) => access(path).then(() => true, () => false);
@@ -62,7 +62,7 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     const info = await json(join(site.dist, 'iiif/image/info.json'));
     assert.equal(info.id, 'https://gjh.github.io/harbour/iiif/image');
     assert.deepEqual([info.width, info.height], [1200, 1600]);
-    assert.deepEqual(await validate(join(site.dist, 'iiif/image')), []);
+    assert.deepEqual(await missingFiles(join(site.dist, 'iiif/image')), []);
   });
 
   test('nothing the camera recorded is published: no location, no rotation tag, no wide-gamut numbers', async () => {
@@ -174,25 +174,10 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     await close();
 
     // A blog on another site, carrying the snippet; the site itself is answered from the build.
-    const context = await browser.newContext({ viewport: { width: 1000, height: 800 } });
-    const blog = await context.newPage();
-    const fetched = [];
-    const problems = [];
-    await context.route('**/*', async (route) => {
-      const url = route.request().url();
-      if (url === 'https://blog.example/post.html') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><h1>My post</h1>${snippet}` });
-      if (!url.startsWith(`${site.baseUrl}/`)) return problems.push(`request to another site: ${url}`), route.abort();
-      const path = new URL(url).pathname.slice('/harbour/'.length) || 'index.html';
-      const body = await readFile(join(site.dist, decodeURIComponent(path))).catch(() => undefined);
-      if (!body) return problems.push(`not published: ${path}`), route.fulfill({ status: 404, body: '' });
-      fetched.push(path);
-      return route.fulfill({ body, contentType: { '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.html': 'text/html' }[path.match(/\.\w+$/)?.[0]] ?? 'image/jpeg' });
-    });
-    await blog.goto('https://blog.example/post.html');
-
-    const frame = blog.frameLocator('iframe');
+    const blog = await open(site, '', { elsewhere: `<!doctype html><h1>My post</h1>${snippet}` });
+    const frame = blog.page.frameLocator('iframe');
     await frame.locator('.openseadragon-container').first().waitFor();
-    await until(() => fetched.some((path) => path.startsWith('iiif/image/')), 'the picture to load in the frame');
+    await until(() => blog.fetched.some((path) => path.startsWith('iiif/image/')), 'the picture to load in the frame');
     assert.equal(await frame.locator('.masthead').count(), 0, 'no header');
     assert.equal(await frame.locator('.details').count(), 0, 'no details');
     assert.deepEqual(await frame.locator('.credit span').allTextContents(), ['Harbour at dusk', 'Example Museum']);
@@ -201,8 +186,8 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.equal(await back.getAttribute('target'), '_blank');
     const pane = await frame.locator('.viewer').boundingBox();
     assert.ok(pane.width > 790 && pane.height > 520, `the viewer fills the frame (${pane.width}x${pane.height})`);
-    assert.deepEqual(problems, []);
-    await context.close();
+    assert.deepEqual(blog.problems, []);
+    await blog.close();
   });
 
   test('OpenSeadragon opens first and zooms to full resolution', async () => {
@@ -217,9 +202,8 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
   test('a visitor can switch to Mirador, and the address then remembers the choice', async () => {
     const opened = await open(site);
     await opened.page.getByRole('button', { name: 'Mirador' }).click();
-    await opened.page.locator('.mirador-window').waitFor();
+    await opened.page.locator('.mirador-window .openseadragon-container').waitFor(); // Mirador draws with OpenSeadragon too
     assert.equal(new URL(opened.page.url()).searchParams.get('viewer'), 'mirador');
-    assert.equal(await opened.page.locator('.openseadragon-container').count() > 0, true); // Mirador draws with OpenSeadragon too
     await zoomToFullResolution(opened);
     assert.deepEqual(opened.problems, []);
     await opened.close();
@@ -319,6 +303,16 @@ suite('a Welsh archive publishes its image in Welsh and English', () => {
     await close();
 
     assert.deepEqual((await shown({ locale: 'en-GB', query: '?lang=cy' })).title, ['Harbwr', 'cy']);
+  });
+
+  test('switching language leaves OpenSeadragon, which shows no words of its own, as it was', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon', { locale: 'en-GB' });
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.locator('.viewer-surface').evaluate((surface) => surface.setAttribute('data-before', ''));
+    await page.getByRole('group', { name: 'Language' }).locator('button[lang="cy"]').click();
+    await page.locator('h1', { hasText: 'Harbwr' }).waitFor();
+    assert.equal(await page.locator('.viewer-surface[data-before]').count(), 1, 'the same viewer, not a new one');
+    await close();
   });
 });
 
@@ -421,7 +415,7 @@ suite('an archive commits a 16-bit scan through Git LFS and changes no settings'
   test('the 16-bit scan is published as ordinary 8-bit sRGB JPEG tiles that a viewer can zoom into fully', async () => {
     const { depth, space, channels } = await inspect(join(site.dist, 'iiif/image/0,0,512,512/512,512/0/default.jpg'));
     assert.deepEqual({ depth, space, channels }, { depth: 'uchar', space: 'srgb', channels: 3 });
-    assert.deepEqual(await validate(join(site.dist, 'iiif/image')), []);
+    assert.deepEqual(await missingFiles(join(site.dist, 'iiif/image')), []);
 
     const opened = await open(site);
     assert.equal(await opened.page.locator('h1').textContent(), 'Survey_1856');

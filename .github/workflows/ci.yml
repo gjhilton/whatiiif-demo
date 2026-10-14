@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths: ['engine/**', 'package*.json', '.github/workflows/ci.yml']
 
+permissions:
+  contents: read
+
 jobs:
   test:
     if: github.event.repository.is_template

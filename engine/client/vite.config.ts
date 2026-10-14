@@ -24,7 +24,7 @@ export default defineConfig({
   plugins: [react(), openSeadragonImages()],
   build: {
     outDir: fileURLToPath(new URL('../../dist', import.meta.url)),
-    emptyOutDir: false, // dist/iiif is written by engine/build.js first
+    emptyOutDir: true, // `npm run build` makes the page first, then engine/build.js adds the image to it
     chunkSizeWarningLimit: 4000, // Mirador is large but only loaded when chosen
   },
 });

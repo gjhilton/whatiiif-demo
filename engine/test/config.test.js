@@ -59,10 +59,6 @@ test('rejects unknown keys so typos are not silently ignored', () => {
   assert.throws(() => parseConfig('titel = "x"', opts), /unknown.*titel/i);
 });
 
-test('rejects a tile size that is not a positive integer', () => {
-  assert.throws(() => parseConfig('[tiles]\nsize = 0', opts), /tiles\.size/);
-});
-
 test('reports TOML syntax errors in plain English', () => {
   assert.throws(() => parseConfig('title = ', opts), /whatiiif\.toml.*not valid TOML/);
 });
@@ -122,16 +118,40 @@ test('alt text describes the image, and falls back to the title', () => {
   assert.deepEqual(parseConfig('title = "Harbour"\nalt = "Fishing boats at dusk"', opts).alt, { en: 'Fishing boats at dusk' });
 });
 
-const languageMistakes = [
+test('blank texts count as not given, and texts lose the spaces around them', () => {
+  const c = parseConfig('title = "  "\nsummary = { en = "", cy = " Golygfa " }\nattribution = """\nExample Museum\n"""', opts);
+  assert.deepEqual(c.title, { en: 'harbour-1890' });
+  assert.deepEqual(c.summary, { cy: 'Golygfa' });
+  assert.deepEqual(c.attribution, { en: 'Example Museum' });
+});
+
+// What someone might write, and the sentence that must tell them what is wrong: never a JavaScript error, and
+// never a value quietly taken to mean something else.
+const mistakes = [
   ['language = "English"', /"language" must be a language code such as en, cy or de-CH \(got "English"\)/],
   ['title = { english = "Harbour" }', /"title" has "english", which is not a language code such as en, cy or de-CH/],
-  ['title = { en = 3 }', /"title\.en" must be text/],
-  ['title = 3', /"title" must be text, or a table of texts by language such as \{ en = "Harbour", cy = "Harbwr" \}/],
+  ['title = { en = 3 }', /"title\.en" must be text in double quotes, like "3"/],
+  ['title = 3', /"title" must be text in double quotes, like "3", or a table of texts by language such as \{ en = "Harbour", cy = "Harbwr" \}/],
+  ['[[metadata]]\nlabel = "Date"\nvalue = 1890-01-01', /"metadata\.value" must be text in double quotes, like "1890-01-01"/],
   ['summary = {}', /"summary" is an empty table/],
   ['[[metadata]]\nlabel = "Date"', /each \[\[metadata\]\] entry needs a "label" and a "value" \(entry 1\)/],
+  ['[[metadata]]\nlabel = "Date"\nvalu = "1890"', /unknown setting "metadata\.valu"/],
+  ['metadata = "Date: 1890"', /"metadata" must be a list of \[\[metadata\]\] entries, each with a "label" and a "value"/],
+  ['metadata = ["Date"]', /"metadata" must be a list of \[\[metadata\]\] entries/],
+  ['base_url = 3', /"base_url" must be a URL such as https:\/\/example\.org\/my-image \(got 3\)/],
+  ['base_url = "example.org"', /"base_url" must be a URL/],
+  ['viewer = 3', /"viewer" must be one of: openseadragon, mirador \(got 3\)/],
+  ['rights = 4', /"rights" must be a Creative Commons or RightsStatements\.org URL/],
+  ['tiles = 512', /"tiles" must be a section, \[tiles\], not a single value/],
+  ['publish = false', /"publish" must be a section, \[publish\], not a single value/],
+  ['[publish]\nfull = "no"', /"publish\.full" must be true or false, without quotes \(got "no"\)/],
+  ['[tiles]\nsize = 1', /"tiles\.size" must be a whole number from 64 to 4096 \(got 1\)/],
+  ['[tiles]\nsize = 10000', /"tiles\.size" must be a whole number from 64 to 4096 \(got 10000\)/],
+  ['[tiles]\nsize = "512"', /"tiles\.size" must be a whole number from 64 to 4096 \(got "512"\)/],
+  ['[tiles]\nquality = 85.5', /"tiles\.quality" must be a whole number from 1 to 100 \(got 85\.5\)/],
 ];
 
-for (const [toml, says] of languageMistakes) {
+for (const [toml, says] of mistakes) {
   test(`explains what is wrong with ${toml.replaceAll('\n', ' ')}`, () => {
     assert.throws(() => parseConfig(toml, opts), says);
   });

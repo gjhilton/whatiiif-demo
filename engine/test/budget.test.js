@@ -1,18 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { slice } from '../lib/slice.js';
 import { applyBudget, dirSize } from '../lib/budget.js';
-import { makeImage } from './fixtures.js';
-import { tempDir } from './tmp.js';
+import { makeImage } from './support/fixtures.js';
+import { tempDir } from './support/tmp.js';
 
 const exists = (p) => access(p).then(() => true, () => false);
 
 async function sliced() {
   const out = await tempDir('out');
-  await slice({ source: await makeImage(2000, 1500), outDir: out, id: 'https://example.org/i' });
-  return { out, info: JSON.parse(await readFile(join(out, 'info.json'), 'utf8')) };
+  return { out, info: await slice({ source: await makeImage(2000, 1500), outDir: out, id: 'https://example.org/i' }) };
 }
 
 test('keeps everything when the site fits the budget', async () => {

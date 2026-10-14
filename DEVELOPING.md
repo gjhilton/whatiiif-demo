@@ -5,47 +5,61 @@
 `content/` belongs to whoever uses the template; everything else belongs to the template. On every push that
 touches either, the **Deploy** workflow (`.github/workflows/deploy.yml`) checks that `content/` holds an image
 (`engine/ci/has-image.js`). It then runs `engine/ci/build.sh`, which builds the page (`engine/client/`, React and
-Vite) and then the site (`engine/build.js` and `engine/lib/`):
+Vite) and then the site from the picture (`engine/build.js`, which runs `engine/lib/build.js`):
 
-- `slice.js` cuts the image into IIIF Image API 3.0 level 0 tiles with [sharp](https://sharp.pixelplumbing.com)
+- `content.js` reads `content/`: the one picture (`source.js`, which needs no npm packages because `has-image.js`
+  runs before any are installed), `whatiiif.toml` through `config.js`, which explains every mistake in a sentence,
+  and the descriptions, turned into HTML.
+- `slice.js` cuts the picture into IIIF Image API 3.0 level 0 tiles with [sharp](https://sharp.pixelplumbing.com)
   (libvips). It first turns the image upright, flattens transparency onto white, converts it to sRGB using its
   colour profile, and drops its EXIF.
-- `info.js` writes `info.json`. `requests.js` knows every file a viewer will ask for, and `validate.js` refuses to
-  deploy a service that is missing any of them.
-- `manifest.js` writes a IIIF Presentation 3.0 manifest from `content/whatiiif.toml`, which `config.js` reads.
+- `service.js` holds what a static image service promises: its `info.json`, every file a viewer reading that will
+  ask for, and which of those a folder is missing. The build refuses to deploy a service that is missing any.
+- `budget.js` leaves out the full-size JPEG if the site would otherwise exceed GitHub Pages' size limit.
+- `manifest.js` writes the IIIF Presentation 3.0 manifest. The original file is not published; the manifest links
+  to it in the repository (`original.js`).
 - `page.js` writes the title, social-card tags and a no-JavaScript fallback into the built page. The page itself
   loads `site.json` when it opens, so it is the same for every image.
 
-The original file is not published; the manifest links to it in the repository (`original.js`). If the site would
-exceed GitHub Pages' size limit, the full-size JPEG is dropped first (`budget.js`).
+The page (`engine/client/src/`): `App.tsx` holds what is on screen (viewer, language, part of the picture),
+`address.ts` reads and writes the page's address so that any view is a link, `language.ts` chooses the visitor's
+language, and `viewers/` holds one adapter per viewer, each downloaded only when it is chosen. Every colour is in
+`colours.css`; nothing else names one, and both viewers take theirs from it.
+
+Copies of the template call `engine/ci/has-image.js`, `engine/ci/build.sh`, `engine/ci/update.sh` and
+`engine/.node-version` from workflow files that the Update workflow cannot change, so those paths must stay put.
 
 ## Working on it
 
-Needs Node 22 or newer.
+Needs Node 24 or newer.
 
 ```sh
 npm install
 npm run build        # page and site from content/ into dist/; put an image in content/ first
 npm run preview      # http://localhost:4173
-npm test             # unit and integration tests, a few seconds
+npm test             # unit and integration tests, about ten seconds
 npm run typecheck
 npx playwright install chromium-headless-shell   # once
 npm run test:e2e     # whole journeys in a real browser, about a minute
+npm run test:visual  # the page against reviewed screenshots
 ```
 
-`test:e2e` makes repositories from the template and commits images to them the way people do: uploaded on
-github.com, through Git LFS, in two languages, and with mistakes. It runs what the Deploy workflow runs and opens
-each site in both viewers, failing if either asks for a file that was not published. It also runs the Update
-workflow against a stand-in for GitHub.
+`engine/test/` holds:
 
-`npm run test:visual` compares the page, in each state a visitor can meet, with reviewed screenshots in
-`engine/test/visual/screenshots` (one set per operating system, since fonts differ; CI checks the Linux set). After
-a deliberate change to how the page looks, run `npm run test:visual -- --update-snapshots`, look at every new
-picture, and commit them. For the Linux set, push and take them from the failed CI run's `visual-differences`
-artifact.
-
-The page's colours are all in `engine/client/src/colours.css`; nothing else names a colour, and both viewers take
-theirs from it.
+- `*.test.js`, run by `npm test`: the engine, the page's own logic (Node runs its TypeScript as it is), and the
+  workflows' scripts in `engine/ci/`, run against a stand-in for GitHub's `gh`.
+- `e2e/`: repositories made from the template, with images committed the way people commit them: uploaded on
+  github.com, through Git LFS, in two languages, and with mistakes. Each runs what the Deploy workflow runs and opens
+  the site in both viewers, failing if either asks for a file that was not published. `check-site.js` checks any
+  built or live site the same way.
+- `visual/`: the page, in each state a visitor can meet, against reviewed screenshots in
+  `engine/test/visual/screenshots` (one set per operating system, since fonts differ; CI checks the Linux set). After
+  a deliberate change to how the page looks, run `npm run test:visual -- --update-snapshots`, look at every new
+  picture, and commit them. For the Linux set, push and take them from the failed CI run's `visual-differences`
+  artifact.
+- `live/`: tests on real GitHub (below).
+- `support/`: what the tests share: test images, temporary folders, the IIIF schema, and the harness that copies the
+  template, runs the Deploy workflow's steps and opens a site in a browser.
 
 To check a site that is already live:
 
@@ -79,5 +93,7 @@ Two checks cover those:
 
 Copies of the template update themselves from the repository named in `engine/UPSTREAM`
 (`.github/workflows/update.yml` and `engine/ci/update.sh`). To release, bump `engine/VERSION` and publish a GitHub
-release tagged `vX.Y.Z`. An update replaces `engine/`, `package.json` and `package-lock.json` only. GitHub does not
-let the workflow change workflow files, so users copy those by hand; the pull request says when they need to.
+release tagged `vX.Y.Z`. An update replaces `engine/`, `package.json` and `package-lock.json` only, and is never
+offered to a copy already on that version or a later one. GitHub does not let the workflow change workflow files,
+so users copy those by hand; the pull request says when they need to (`ci.yml` and `live.yml` run only in the
+template, so changes to those are not mentioned).

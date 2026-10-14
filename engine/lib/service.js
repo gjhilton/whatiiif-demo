@@ -1,3 +1,39 @@
+// The static IIIF Image API 3.0 level 0 service: its info.json, every file a viewer reading that info.json will ask
+// for, and which of those a folder is missing. A static service has no server to make a file on request, so it
+// works only if the slicer wrote everything the info.json implies.
+import { access, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const MAX_SIZE = 2000; // the longest side of a whole-image rendition
+
+/** The info.json of an image `width` by `height` pixels, cut into square tiles `tileSize` pixels across. */
+export function imageInfo({ id, width, height, tileSize }) {
+  // Halve until the whole image fits in one tile.
+  const scaleFactors = [1];
+  while (Math.max(width, height) / scaleFactors.at(-1) > tileSize) scaleFactors.push(scaleFactors.at(-1) * 2);
+
+  // Whole-image renditions for thumbnails and previews. Viewers built on OpenSeadragon 4-5 read `sizes` as the
+  // pyramid levels, so only real levels may be listed: the smaller ones here, deep zoom covers the rest.
+  const sizes = scaleFactors
+    .filter((s) => s > 1)
+    .map((s) => ({ width: Math.ceil(width / s), height: Math.ceil(height / s) }))
+    .filter((size) => Math.max(size.width, size.height) <= MAX_SIZE)
+    .reverse();
+
+  return {
+    '@context': 'http://iiif.io/api/image/3/context.json',
+    id,
+    type: 'ImageService3',
+    protocol: 'http://iiif.io/api/image',
+    profile: 'level0',
+    width,
+    height,
+    extraFeatures: ['sizeByWh'], // without this OpenSeadragon will not request tiles from a level 0 service
+    tiles: [{ width: tileSize, scaleFactors }],
+    sizes,
+  };
+}
+
 /**
  * OpenSeadragon 4 and 5 (so Mirador 3-4 and Universal Viewer) take `sizes` to be the pyramid levels whenever
  * the list is as long as the pyramid is deep, without checking, and size their tile requests from it.
@@ -13,10 +49,8 @@ function sizesReadAsLevels(info, scaleFactors) {
 }
 
 /**
- * Every tile request path (relative to the image id) that a viewer will make
- * for an Image API 3.0 info.json. Mirrors OpenSeadragon's IIIF tile source,
- * which Mirador and most other viewers build on, so a static level 0 service
- * is only "done" when every path here exists on disk.
+ * Every path, relative to the service, that a viewer will request for this info.json. Mirrors OpenSeadragon's
+ * IIIF tile source, which Mirador and most other viewers build on.
  */
 export function expectedRequests(info) {
   const { width: W, height: H } = info;
@@ -57,4 +91,14 @@ export function expectedRequests(info) {
     }
   }
   return [...paths];
+}
+
+/** The files a viewer would ask for that are not in the service folder `dir`, as described by its info.json. */
+export async function missingFiles(dir) {
+  const info = JSON.parse(await readFile(join(dir, 'info.json'), 'utf8'));
+  const missing = [];
+  for (const path of expectedRequests(info)) {
+    if (!(await access(join(dir, path)).then(() => true, () => false))) missing.push(path);
+  }
+  return missing;
 }

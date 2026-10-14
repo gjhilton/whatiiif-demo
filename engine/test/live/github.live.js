@@ -5,8 +5,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { makePhonePhoto, makeRepeatedNoise } from '../fixtures.js';
-import { run } from '../e2e/harness.js';
+import { makePhonePhoto, makeRepeatedNoise } from '../support/fixtures.js';
+import { run } from '../support/harness.js';
 import { MINUTE, gh, ghJson, git, poll, trialRepository } from './trial.js';
 
 let trial;

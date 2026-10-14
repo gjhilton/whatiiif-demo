@@ -2,14 +2,17 @@ import type { Site, Text } from './site';
 
 const primary = (tag: string) => tag.toLowerCase().split('-')[0];
 
-/** The language to show: ?lang= if the site has it, else the first of the browser's languages it has, else its own. */
-export function chooseLanguage(site: Site): string {
-  const asked = new URLSearchParams(location.search).get('lang');
-  for (const wanted of [asked, ...navigator.languages]) {
-    if (!wanted) continue;
-    const exact = site.languages.find((language) => language.toLowerCase() === wanted.toLowerCase());
-    const close = site.languages.find((language) => primary(language) === primary(wanted)); // cy serves cy-GB
-    if (exact ?? close) return (exact ?? close)!;
+/**
+ * The language to show: the first of `wanted` (the one the address asks for, then the browser's) that the site has,
+ * exactly or as a close relative (cy for cy-GB), else the site's own.
+ */
+export function chooseLanguage(site: Site, wanted: readonly (string | undefined)[]): string {
+  for (const tag of wanted) {
+    if (!tag) continue;
+    const found =
+      site.languages.find((language) => language.toLowerCase() === tag.toLowerCase()) ??
+      site.languages.find((language) => primary(language) === primary(tag));
+    if (found) return found;
   }
   return site.language;
 }

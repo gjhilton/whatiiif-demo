@@ -15,8 +15,11 @@ if [[ "$UPSTREAM" == "${GITHUB_REPOSITORY:-}" ]]; then
 fi
 
 current=$(tr -d '[:space:]' < engine/VERSION)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
 # A template with no release yet has nothing to update to; any other failure is a real one.
-errors=$(mktemp)
+errors="$work/errors"
 if ! tag=$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName 2> "$errors"); then
   if grep -qx 'release not found' "$errors"; then
     echo "$UPSTREAM has not published a release yet, so there is nothing to update to."
@@ -30,8 +33,12 @@ if [[ "$latest" == "$current" ]]; then
   echo "Already on the latest release ($current)."
   exit 0
 fi
+# A copy made from the template between two releases is ahead of the latest one.
+if [[ $(printf '%s\n' "$latest" "$current" | sort -V | tail -1) == "$current" ]]; then
+  echo "$current is newer than the latest release ($latest), so there is nothing to update to."
+  exit 0
+fi
 
-work=$(mktemp -d)
 mkdir "$work/src"
 gh api "repos/$UPSTREAM/tarball/$tag" > "$work/release.tgz"
 tar -xzf "$work/release.tgz" --strip-components=1 -C "$work/src"
@@ -42,7 +49,8 @@ cp -R "$work/src/engine" engine
 cp "$work/src/package.json" "$work/src/package-lock.json" .
 
 body="Updates the engine, preview page and tooling from **$UPSTREAM** $current → $latest. Your \`content/\` is untouched."
-if ! diff -rq "$work/src/.github/workflows" .github/workflows > /dev/null 2>&1; then
+# ci.yml and live.yml run only in the template itself, so they never need copying.
+if ! diff -rq -x ci.yml -x live.yml "$work/src/.github/workflows" .github/workflows > /dev/null 2>&1; then
   body+=$'\n\n**Workflow files changed upstream.** GitHub does not let this automation edit `.github/workflows/`, so copy them over by hand from the release: https://github.com/'"$UPSTREAM/tree/$tag/.github/workflows"
 fi
 body+=$'\n\nChangelog: https://github.com/'"$UPSTREAM/releases/tag/$tag"

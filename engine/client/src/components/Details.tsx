@@ -20,8 +20,8 @@ export function Details({ site, language, link, embed }: { site: Site; language:
         {description && <div className="prose" lang={description.lang} dangerouslySetInnerHTML={{ __html: description.text }} />}
         <table className="meta">
           <tbody>
-            {rows.map(([label, value]) => (
-              <tr key={label.text}>
+            {rows.map(([label, value], i) => (
+              <tr key={i}>
                 <th scope="row" lang={label.lang}>{label.text}</th>
                 <td lang={value.lang}>{value.text}</td>
               </tr>

@@ -6,18 +6,18 @@ import { copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { build } from '../../lib/build.js';
-import { makeImage } from '../fixtures.js';
-import { tempDir } from '../tmp.js';
-import { browse, buildPage, zoomToFullResolution } from './harness.js';
+import { makeImage } from '../support/fixtures.js';
+import { tempDir } from '../support/tmp.js';
+import { browse, buildPage, zoomToFullResolution } from '../support/harness.js';
 
 // A project-pages style address, with the site in a sub-folder.
 const SITE = 'https://whatiiif.example/my-image';
 // The shape that first showed a viewer asking for tiles that were never cut, then the slicer's awkward cases.
 const SHAPES = [[3000, 2000], [4999, 3001], [1024, 1024], [513, 513], [300, 200], [2000, 37], [1, 1]];
-// Each viewer's name and the element it draws into.
+// Each viewer's name, the element it draws into, and the file holding the viewer's own code.
 const VIEWERS = {
-  openseadragon: { label: 'OpenSeadragon', surface: '.openseadragon-container' },
-  mirador: { label: 'Mirador', surface: '.mirador-window' },
+  openseadragon: { label: 'OpenSeadragon', surface: '.openseadragon-container', code: '**/assets/openseadragon-*.js' },
+  mirador: { label: 'Mirador', surface: '.mirador-window', code: '**/assets/mirador-*.js' },
 };
 
 const built = new Map(); // "3000x2000" -> what the build wrote for that image (iiif/ and site.json)
@@ -67,6 +67,19 @@ for (const [viewer, { label, surface }] of Object.entries(VIEWERS)) {
       return { x: x + pane.clientLeft, y: y + pane.clientTop, width: pane.clientWidth, height: pane.clientHeight };
     });
     assert.deepEqual(drawn, inside);
+    await site.close();
+  });
+}
+
+// A visitor whose connection drops a viewer's code is told so, rather than left looking at an empty pane.
+for (const [viewer, { label, code }] of Object.entries(VIEWERS)) {
+  test(`if ${label}'s code does not arrive, the pane says so`, async () => {
+    const site = await open(viewer, '3000x2000');
+    await site.page.route(code, (route) => route.fulfill({ contentType: 'text/javascript', body: 'throw new Error("its code did not arrive");' }));
+    await site.page.reload();
+    const error = site.page.locator('.viewer-error');
+    await error.waitFor({ timeout: 10_000 });
+    assert.equal(await error.textContent(), `Could not load ${label}: its code did not arrive`);
     await site.close();
   });
 }

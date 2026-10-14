@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { originalUrl, committedToLfs } from '../lib/original.js';
-import { tempDir } from './tmp.js';
+import { tempDir } from './support/tmp.js';
 
 const run = promisify(execFile);
 

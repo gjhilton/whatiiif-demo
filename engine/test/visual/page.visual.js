@@ -4,8 +4,8 @@ import { test, expect } from '@playwright/test';
 import { copyFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { browse, commit, deploy, templateCopy } from '../e2e/harness.js';
-import { tempDir } from '../tmp.js';
+import { browse, commit, deploy, templateCopy } from '../support/harness.js';
+import { tempDir } from '../support/tmp.js';
 
 /** Rings of flat colour: plainly a picture, identical on every run, and small as a screenshot. */
 async function makePicture() {

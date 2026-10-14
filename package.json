@@ -1,11 +1,10 @@
 {
   "name": "whatiiif",
-  "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "test": "node --test \"engine/test/**/*.test.js\"",
@@ -21,12 +20,11 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/material": "^7.3.11",
-    "@mui/system": "^7.3.11",
+    "@mui/material": "^9.5.0",
+    "@mui/system": "^9.5.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "i18next": "^26.4.2",
     "marked": "^18.0.14",
-    "mirador": "^4.2.4",
+    "mirador": "^4.3.0",
     "openseadragon": "^6.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -37,12 +35,12 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^24.0.0",
     "@types/openseadragon": "^5.0.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "ajv": "^8.20.0",
-    "playwright": "^1.64.0",
+    "playwright": "1.64.0",
     "typescript": "^7.0.2"
   }
 }

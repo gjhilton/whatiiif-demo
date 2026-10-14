@@ -5,8 +5,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { makePhonePhoto } from '../fixtures.js';
-import { repo as template, run } from '../e2e/harness.js';
+import { makePhonePhoto } from '../support/fixtures.js';
+import { repo as template, run } from '../support/harness.js';
 import { MINUTE, gh, ghJson, poll, trialRepository } from './trial.js';
 
 const upstream = (await readFile(join(template, 'engine/UPSTREAM'), 'utf8')).trim();

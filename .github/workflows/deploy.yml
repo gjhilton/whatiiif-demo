@@ -13,9 +13,11 @@ permissions:
   pages: write
   id-token: write
 
+# One deployment at a time. A newer commit waits for the one being published rather than cancelling it: a
+# deployment cancelled part-way can leave GitHub Pages refusing that commit afterwards.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   content:

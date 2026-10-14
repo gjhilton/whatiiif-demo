@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { expectedRequests } from '../../lib/requests.js';
-import { schemaProblems, schemaUnavailable } from '../schema.js';
-import { browse, zoomToFullResolution } from './harness.js';
+import { expectedRequests } from '../../lib/service.js';
+import { schemaProblems, schemaUnavailable } from '../support/schema.js';
+import { browse, zoomToFullResolution } from '../support/harness.js';
 
 const siteUrl = process.env.E2E_SITE_URL?.replace(/\/+$/, '');
 const dist = process.env.E2E_DIST;

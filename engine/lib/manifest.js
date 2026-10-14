@@ -2,8 +2,11 @@
 const languageMap = (text) => Object.fromEntries(Object.entries(text).map(([language, words]) => [language, [words]]));
 const english = (words) => ({ en: [words] }); // our own words, not the site author's
 
-/** Builds a Presentation API 3.0 manifest wrapping the static image service. */
-export function buildManifest({ manifestId, imageId, info, config, hasFull, originalUrl }) {
+/**
+ * A Presentation API 3.0 manifest painting the static image service on one canvas, linking back to the page at
+ * `pageUrl` and, if `original` gives its address and media type, to the file the image was made from.
+ */
+export function buildManifest({ manifestId, imageId, pageUrl, info, config, hasFull, original }) {
   const { width, height } = info;
   const sizes = info.sizes ?? [];
   const url = (size) => `${imageId}/full/${size}/0/default.jpg`;
@@ -15,7 +18,7 @@ export function buildManifest({ manifestId, imageId, info, config, hasFull, orig
   const service = [{ id: imageId, type: 'ImageService3', profile: 'level0' }];
 
   const canvasId = `${manifestId.replace(/\/manifest\.json$/, '')}/canvas/1`;
-  const manifest = {
+  return {
     '@context': 'http://iiif.io/api/presentation/3/context.json',
     id: manifestId,
     type: 'Manifest',
@@ -28,6 +31,7 @@ export function buildManifest({ manifestId, imageId, info, config, hasFull, orig
     ...(config.metadata?.length && {
       metadata: config.metadata.map(({ label, value }) => ({ label: languageMap(label), value: languageMap(value) })),
     }),
+    homepage: [{ id: pageUrl, type: 'Text', label: languageMap(config.title), format: 'text/html' }],
     thumbnail: [
       {
         id: smallest ? url(`${smallest.width},${smallest.height}`) : url(painted.size),
@@ -36,7 +40,7 @@ export function buildManifest({ manifestId, imageId, info, config, hasFull, orig
         service,
       },
     ],
-    ...(originalUrl && { rendering: [{ id: originalUrl, type: 'Image', label: english('Original file') }] }),
+    ...(original && { rendering: [{ id: original.url, type: 'Image', label: english('Original file'), format: original.format }] }),
     items: [
       {
         id: canvasId,
@@ -68,5 +72,4 @@ export function buildManifest({ manifestId, imageId, info, config, hasFull, orig
       },
     ],
   };
-  return manifest;
 }

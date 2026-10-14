@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, readFile, copyFile, rm, readdir } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { build } from '../lib/build.js';
-import { validate } from '../lib/validate.js';
-import { makeImage } from './fixtures.js';
-import { tempDir } from './tmp.js';
+import { missingFiles } from '../lib/service.js';
+import { makeImage } from './support/fixtures.js';
+import { tempDir } from './support/tmp.js';
 
 async function setup(toml = '') {
   const content = await tempDir('content');
@@ -25,13 +25,19 @@ test('builds a valid service, manifest and site config from a committed image', 
   });
 
   const imageDir = join(out, 'iiif/image');
-  assert.deepEqual(await validate(imageDir), []);
+  assert.deepEqual(await missingFiles(imageDir), []);
   assert.equal((await read(join(imageDir, 'info.json'))).id, 'https://example.org/site/iiif/image');
 
   const manifest = await read(join(out, 'iiif/manifest.json'));
   assert.equal(manifest.id, 'https://example.org/site/iiif/manifest.json');
   assert.deepEqual(manifest.label, { en: ['Harbour'] });
-  assert.match(manifest.rendering[0].id, /raw\.githubusercontent\.com\/gjh\/harbour\/main\/content\/harbour\.tif/);
+  assert.deepEqual(manifest.homepage[0].id, 'https://example.org/site/');
+  assert.deepEqual(manifest.rendering[0], {
+    id: 'https://raw.githubusercontent.com/gjh/harbour/main/content/harbour.tif',
+    type: 'Image',
+    label: { en: ['Original file'] },
+    format: 'image/tiff',
+  });
 
   const site = await read(join(out, 'site.json'));
   assert.equal(site.viewer, 'openseadragon');
@@ -55,13 +61,6 @@ test('honours publish.full = false', async () => {
   assert.match(body.id, /full\/1000,750\/0\/default\.jpg$/);
 });
 
-test('gives the page the optional description.md already turned into HTML', async () => {
-  const { content, out } = await setup();
-  await writeFile(join(content, 'description.md'), '# About\n\nA *harbour*.');
-  await build({ contentDir: content, outDir: out, env: {} });
-  assert.deepEqual((await read(join(out, 'site.json'))).description, { en: '<h1>About</h1>\n<p>A <em>harbour</em>.</p>\n' });
-});
-
 test('a rebuild after swapping the image leaves no tiles from the previous one', async () => {
   const { content, out } = await setup();
   await build({ contentDir: content, outDir: out, env: {} });
@@ -75,19 +74,16 @@ test('a rebuild after swapping the image leaves no tiles from the previous one',
   assert.deepEqual(await readdir(join(out, 'iiif/image/full')), ['300,200', 'max']);
 });
 
-test('tells the page every language its texts are in, the site language first, with a description for each', async () => {
-  const { content, out } = await setup('language = "cy"\ntitle = { en = "Harbour", cy = "Harbwr" }\nsummary = { de = "Hafen" }');
-  await writeFile(join(content, 'description.md'), 'Golygfa');
-  await writeFile(join(content, 'description.en.md'), 'A view');
-  await writeFile(join(content, 'description.notes.v2.md'), 'Not a translation');
+test('gives the page its texts in every language, with the description already turned into HTML', async () => {
+  const { content, out } = await setup('language = "cy"\ntitle = { en = "Harbour", cy = "Harbwr" }');
+  await writeFile(join(content, 'description.md'), 'Golygfa *hyfryd*');
   await build({ contentDir: content, outDir: out, env: {} });
 
   const site = await read(join(out, 'site.json'));
   assert.equal(site.language, 'cy');
-  assert.deepEqual(site.languages, ['cy', 'de', 'en']);
+  assert.deepEqual(site.languages, ['cy', 'en']);
   assert.deepEqual(site.title, { en: 'Harbour', cy: 'Harbwr' });
-  assert.deepEqual(site.alt, { en: 'Harbour', cy: 'Harbwr' });
-  assert.deepEqual(site.description, { cy: '<p>Golygfa</p>\n', en: '<p>A view</p>\n' });
+  assert.deepEqual(site.description, { cy: '<p>Golygfa <em>hyfryd</em></p>\n' });
 });
 
 test('personalises the built page: a social card showing a published picture, and a fallback without JavaScript', async () => {

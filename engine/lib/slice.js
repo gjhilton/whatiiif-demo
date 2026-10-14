@@ -2,14 +2,14 @@ import sharp from 'sharp';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { imageInfo } from './info.js';
-import { findMissingTiles } from './validate.js';
+import { imageInfo, missingFiles } from './service.js';
 
 const anySize = { limitInputPixels: false }; // sharp refuses images over 268 megapixels unless told otherwise
 
 /**
- * Slices `source` into a static IIIF Image API 3.0 level 0 service in `outDir` (empty, or not there yet).
- * Every published image is upright, opaque, 8-bit sRGB, and carries none of the source's metadata.
+ * Slices `source` into a static IIIF Image API 3.0 level 0 service in `outDir` (empty, or not there yet), and
+ * returns its info.json. Every published image is upright, opaque, 8-bit sRGB, and carries none of the source's
+ * metadata.
  */
 export async function slice({ source, outDir, id, tileSize = 512, quality = 85, publishFull = true }) {
   const work = await mkdtemp(join(tmpdir(), 'whatiiif-'));
@@ -29,7 +29,7 @@ export async function slice({ source, outDir, id, tileSize = 512, quality = 85, 
     await writeFile(join(outDir, 'info.json'), JSON.stringify(info, null, 2));
 
     // Tiling leaves out the whole-image files: the listed sizes, the level that fits one tile, and full/max.
-    const wanted = new Set(await findMissingTiles(outDir, info));
+    const wanted = new Set(await missingFiles(outDir));
     if (publishFull) wanted.add('full/max/0/default.jpg');
 
     for (const path of wanted) {
@@ -42,6 +42,7 @@ export async function slice({ source, outDir, id, tileSize = 512, quality = 85, 
       const image = size === 'max' ? published({ optimiseCoding: false }) : published().resize(w, h, { fit: 'fill' });
       await image.toFile(join(outDir, path));
     }
+    return info;
   } finally {
     await rm(work, { recursive: true, force: true });
   }
