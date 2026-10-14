@@ -35,13 +35,24 @@ export async function commit(dir, message, options) {
   await git(dir, ['commit', '-q', '-m', message], options);
 }
 
-/** A new repository holding the template as it stands in this working tree: what "Use this template" gives. */
+// What content/ holds in the template itself, before anyone adds a picture.
+const TEMPLATE_CONTENT = ['content/.gitkeep', 'content/whatiiif.toml'];
+
+/**
+ * A new repository holding the template as it stands in this working tree: what "Use this template" gives.
+ * Its content/ is the template's own, as last committed, not whatever picture or settings this checkout holds
+ * (a developer's preview, or a copy of the template that runs these tests).
+ */
 export async function templateCopy() {
   const dir = await tempDir('copy');
   const { stdout } = await exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repo });
-  for (const file of stdout.split('\0').filter(Boolean)) {
+  for (const file of stdout.split('\0').filter((file) => file && !file.startsWith('content/'))) {
     await mkdir(dirname(join(dir, file)), { recursive: true });
     await copyFile(join(repo, file), join(dir, file));
+  }
+  await mkdir(join(dir, 'content'));
+  for (const file of TEMPLATE_CONTENT) {
+    await writeFile(join(dir, file), (await exec('git', ['show', `HEAD:${file}`], { cwd: repo })).stdout);
   }
   await symlink(join(repo, 'node_modules'), join(dir, 'node_modules')); // stands in for the workflow's `npm ci`
   await git(dir, ['init', '-q', '-b', 'main']);

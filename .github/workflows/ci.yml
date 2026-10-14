@@ -1,4 +1,4 @@
-# Checks for developing this template itself (not run on users' image commits).
+# Checks for developing this template itself. They run only in the template, not in copies made from it.
 name: CI
 
 on:
@@ -10,6 +10,7 @@ on:
 
 jobs:
   test:
+    if: github.event.repository.is_template
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -25,6 +26,7 @@ jobs:
 
   visual:
     # What the page looks like, against the reviewed Linux screenshots in engine/test/visual/screenshots.
+    if: github.event.repository.is_template
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +49,7 @@ jobs:
   rehearsal:
     # The Deploy workflow's own steps on a sample image, short of the GitHub Pages actions themselves,
     # then the built site served over HTTP and opened in a browser.
+    if: github.event.repository.is_template
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

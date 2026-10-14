@@ -1,4 +1,4 @@
-# whatiiif
+# ![whatiiif](engine/artwork/whatiffflogo.png)
 
 Put one large picture on the web, zoomable, for free: a map, a manuscript page, a painting, a photograph.
 You upload the image to GitHub, and GitHub builds a website where anyone can zoom into it, share a link to any
@@ -66,6 +66,7 @@ Open the **Actions** tab and click the run with a red cross. The error explains 
 | content/ must contain exactly one image | Delete the extra pictures from `content`. |
 | … is not supported yet | Save the picture as TIFF, PNG or JPEG and upload that instead. |
 | content/whatiiif.toml: … | Fix the setting it names; the message says how. |
+| Timeout reached, or Deployment cancelled | GitHub Pages was slow. Re-running may not help: make any small change, such as a line in `content/whatiiif.toml`, and commit it to start afresh. |
 
 If nothing runs at all after you upload, check that the picture went into the **content** folder.
 

@@ -44,7 +44,7 @@ jobs:
           node-version-file: engine/.node-version
           cache: npm
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           # Optional: add a PAT as the PAGES_ENABLE_TOKEN secret to have Pages switched on for you.
           token: ${{ secrets.PAGES_ENABLE_TOKEN || github.token }}
@@ -56,8 +56,14 @@ jobs:
         run: engine/ci/build.sh
         env:
           SITE_BASE_URL: ${{ steps.pages.outputs.base_url }}
-      - uses: actions/upload-pages-artifact@v3
+      # Named for the attempt: a re-run of this job uploads the site again, and two uploads of the same name stop
+      # deploy-pages.
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+          name: github-pages-${{ github.run_attempt }}
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+          timeout: 1200000 # 20 minutes; GitHub Pages sometimes takes more than the default 10

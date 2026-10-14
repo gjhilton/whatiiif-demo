@@ -54,7 +54,7 @@ E2E_SITE_URL=https://you.github.io/your-image node --test engine/test/e2e/check-
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of this, plus a rehearsal of the deploy script on a sample image served
-over HTTP.
+over HTTP. It runs only in the template itself, not in copies made from it.
 
 ## On real GitHub
 
