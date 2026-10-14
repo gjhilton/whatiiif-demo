@@ -310,6 +310,7 @@ suite('a Welsh archive publishes its image in Welsh and English', () => {
     // Each language is offered under its own name for itself, as far as the browser knows it, Welsh first as the site's own.
     const switcher = page.getByRole('group', { name: 'Language' });
     const ownName = (tag) => page.evaluate((t) => new Intl.DisplayNames([t], { type: 'language' }).of(t), tag);
+    await switcher.waitFor(); // drawn once site.json has loaded; reading its buttons does not wait
     assert.deepEqual(await switcher.getByRole('button').evaluateAll((buttons) => buttons.map((b) => b.lang)), ['cy', 'en']);
     assert.deepEqual(await switcher.getByRole('button').allTextContents(), [await ownName('cy'), await ownName('en')]);
     await switcher.locator('button[lang="cy"]').click();

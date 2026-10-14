@@ -74,6 +74,23 @@ export async function makePhonePhoto() {
   return out;
 }
 
+/**
+ * A square PNG of one 256-pixel patch of noise, repeated. It is small to store (about 22 MB at 21,504 pixels) but
+ * costly as JPEG tiles (about 1.8 bytes a pixel at quality 100), so a big one tests the GitHub Pages size limit
+ * without a huge upload. The noise is seeded, so the same size always gives the same file.
+ */
+export async function makeRepeatedNoise(side) {
+  const out = await inTemp(`repeated-noise-${side}.png`);
+  let seed = 1;
+  const patch = Buffer.alloc(256 * 256 * 3).map(() => (seed = (seed * 1103515245 + 12345) >>> 0) >>> 24);
+  const tile = await sharp(patch, { raw: { width: 256, height: 256, channels: 3 } }).png().toBuffer();
+  await sharp({ create: { width: side, height: side, channels: 3, background: '#808080' }, limitInputPixels: false })
+    .composite([{ input: tile, tile: true }])
+    .png({ compressionLevel: 9 })
+    .toFile(out);
+  return out;
+}
+
 /** What a file is: its size, channels, colour space, bit depth, and any orientation tag or EXIF it carries. */
 export async function inspect(file) {
   const { width, height, channels, space, depth, orientation = 1, exif } = await sharp(file).metadata();

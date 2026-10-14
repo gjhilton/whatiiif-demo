@@ -47,6 +47,21 @@ E2E_SITE_URL=https://you.github.io/your-image node --test engine/test/e2e/check-
 CI (`.github/workflows/ci.yml`) runs all of this, plus a rehearsal of the deploy script on a sample image served
 over HTTP.
 
+## On real GitHub
+
+The tests above run what the workflows run, but not the workflows themselves, GitHub Pages or Git LFS on GitHub.
+Two checks cover those:
+
+- **Live** (`.github/workflows/live.yml`), after every change to `main`: pushes the template to the demo repository
+  named by the `DEMO_REPOSITORY` variable, keeping its `content/`, waits for the demo's own Deploy workflow and runs
+  `check-site.js` on the live site (`engine/test/live/deploy-demo.sh`). It pushes with a deploy key for the demo
+  only, stored as the `DEMO_DEPLOY_KEY` secret. Copies of the template have no `DEMO_REPOSITORY` and skip it.
+- **`npm run test:live`**, by hand, about fifteen minutes: makes a public repository with "Use this template",
+  puts this commit of the template in it, and does what a newcomer might. It uploads a picture before switching
+  Pages on and expects the run to say how to fix that, switches Pages on and re-runs, then pushes a picture too
+  big for the browser through Git LFS, sized so the site comes near the Pages limit. It uses your `gh` login and
+  deletes the repository afterwards if `gh` may (`gh auth refresh -s delete_repo`, once).
+
 ## Releasing
 
 Copies of the template update themselves from the repository named in `engine/UPSTREAM`

@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test \"engine/test/**/*.test.js\"",
     "test:e2e": "node --test \"engine/test/e2e/*.e2e.js\"",
+    "test:live": "node --test engine/test/live/github.live.js",
     "typecheck": "tsc -p engine/client",
     "build": "npm run build:page && npm run build:iiif",
     "build:iiif": "node engine/build.js",
