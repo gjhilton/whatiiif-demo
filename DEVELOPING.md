@@ -65,11 +65,15 @@ Two checks cover those:
   named by the `DEMO_REPOSITORY` variable, keeping its `content/`, waits for the demo's own Deploy workflow and runs
   `check-site.js` on the live site (`engine/test/live/deploy-demo.sh`). It pushes with a deploy key for the demo
   only, stored as the `DEMO_DEPLOY_KEY` secret. Copies of the template have no `DEMO_REPOSITORY` and skip it.
-- **`npm run test:live`**, by hand, about fifteen minutes: makes a public repository with "Use this template",
-  puts this commit of the template in it, and does what a newcomer might. It uploads a picture before switching
-  Pages on and expects the run to say how to fix that, switches Pages on and re-runs, then pushes a picture too
-  big for the browser through Git LFS, sized so the site comes near the Pages limit. It uses your `gh` login and
-  deletes the repository afterwards if `gh` may (`gh auth refresh -s delete_repo`, once).
+- **`npm run test:live`**, by hand, about ten minutes. Each file makes its own public repository with "Use this
+  template" (`engine/test/live/trial.js`), using your `gh` login, and deletes it afterwards if `gh` may
+  (`gh auth refresh -s delete_repo`, once); otherwise it names the repository to delete by hand.
+  - `github.live.js` puts this commit of the template in its repository and does what a newcomer might. It uploads
+    a picture before switching Pages on and expects the run to say how to fix that, switches Pages on and re-runs,
+    then pushes a picture too big for the browser through Git LFS, sized so the site comes near the Pages limit.
+  - `update.live.js` starts its repository on the previous release, publishes a picture, runs the Update workflow
+    and expects a pull request for the latest release that changes only `engine/` and the package files. Merging
+    it must republish the site. Run it after each release.
 
 ## Releasing
 
