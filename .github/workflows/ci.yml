@@ -1,0 +1,59 @@
+# Checks for developing this template itself (not run on users' image commits).
+name: CI
+
+on:
+  pull_request:
+    paths: ['engine/**', 'package*.json', '.github/workflows/ci.yml']
+  push:
+    branches: [main]
+    paths: ['engine/**', 'package*.json', '.github/workflows/ci.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium-headless-shell
+      - run: npm run test:e2e
+
+  rehearsal:
+    # The Deploy workflow's own steps on a sample image, short of the GitHub Pages actions themselves,
+    # then the built site served over HTTP and opened in a browser.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - name: Commit a sample image in place of whatever content/ holds
+        run: |
+          npm ci
+          find content -type f ! -name .gitkeep -delete
+          node -e "require('sharp')({ create: { width: 3000, height: 2000, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 30 } } }).jpeg().toFile('content/Sample image.jpg')"
+          git add -A content
+          git -c user.name=rehearsal -c user.email=rehearsal@example.org commit -q -m "Add a sample image"
+      - name: Find the image, as the deploy workflow's first job does
+        run: node engine/ci/has-image.js && grep -qx 'image=true' "$GITHUB_OUTPUT"
+      - name: Build, as the deploy workflow does (installs only what a site needs)
+        run: engine/ci/build.sh
+        env:
+          SITE_BASE_URL: http://localhost:4173
+      - name: Serve the site and check it in a browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium-headless-shell
+          npm run preview &
+          for attempt in $(seq 1 30); do curl -sf http://localhost:4173/site.json > /dev/null && break; sleep 1; done
+          node --test engine/test/e2e/check-site.js
+        env:
+          E2E_SITE_URL: http://localhost:4173

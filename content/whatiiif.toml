@@ -1,0 +1,25 @@
+# Everything here is optional. Delete any line you don't need.
+# Commit ONE image (TIFF, PNG or JPEG) next to this file and push; the site builds itself.
+
+# language = "en"               # the language your texts are in: en, cy, de-CH ...
+# title = "My image"            # defaults to the image file name
+# summary = "One line shown under the title."
+# attribution = "Credit line, e.g. Example Museum"
+# alt = "What the picture shows, for people who cannot see it"   # defaults to the title
+# rights = "https://creativecommons.org/licenses/by/4.0/"   # a Creative Commons or RightsStatements.org URL
+# viewer = "openseadragon"      # or "mirador"; visitors can switch on the page
+# base_url = "https://my-domain.example"   # only for a custom domain
+
+# Any text can also be given in several languages; visitors see theirs where you have given it:
+# title = { en = "Harbour", cy = "Harbwr" }
+
+# [[metadata]]                  # repeat this block for each extra field
+# label = "Date"
+# value = "1890"
+
+# [tiles]
+# size = 512                    # tile edge in pixels
+# quality = 85                  # JPEG quality, 1-100
+
+# [publish]
+# full = true                   # false = no full-size JPEG download (saves site space)

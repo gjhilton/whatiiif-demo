@@ -1,0 +1,63 @@
+# Builds the IIIF site from content/ and publishes it to GitHub Pages.
+# Keep this file thin: the real work lives in engine/ so updates never need to edit workflows.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['content/**', 'engine/**', 'package*.json', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  content:
+    # A fresh copy of the template has no image yet: say so and stop, rather than fail.
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.look.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: look
+        run: node engine/ci/has-image.js
+
+  deploy:
+    needs: content
+    if: needs.content.outputs.image == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true # the source image is stored in Git LFS
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - id: pages
+        uses: actions/configure-pages@v5
+        with:
+          # Optional: add a PAT as the PAGES_ENABLE_TOKEN secret to have Pages switched on for you.
+          token: ${{ secrets.PAGES_ENABLE_TOKEN || github.token }}
+          enablement: ${{ secrets.PAGES_ENABLE_TOKEN != '' }}
+      - name: Explain Pages setup if it failed
+        if: failure() && steps.pages.outcome == 'failure'
+        run: echo "::error::GitHub Pages is not enabled. Go to Settings > Pages and set Source to 'GitHub Actions', then re-run this workflow."
+      - name: Build
+        run: engine/ci/build.sh
+        env:
+          SITE_BASE_URL: ${{ steps.pages.outputs.base_url }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

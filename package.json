@@ -1,0 +1,45 @@
+{
+  "name": "whatiiif",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"engine/test/**/*.test.js\"",
+    "test:e2e": "node --test \"engine/test/e2e/*.e2e.js\"",
+    "typecheck": "tsc -p engine/client",
+    "build": "npm run build:page && npm run build:iiif",
+    "build:iiif": "node engine/build.js",
+    "build:page": "vite build --config engine/client/vite.config.ts",
+    "preview": "vite preview --config engine/client/vite.config.ts"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.11",
+    "@mui/system": "^7.3.11",
+    "@vitejs/plugin-react": "^6.1.1",
+    "i18next": "^26.4.2",
+    "marked": "^18.0.14",
+    "mirador": "^4.2.4",
+    "openseadragon": "^6.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.15",
+    "sharp": "^0.35.5",
+    "smol-toml": "^1.9.0",
+    "vite": "^8.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/openseadragon": "^5.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "ajv": "^8.20.0",
+    "playwright": "^1.64.0",
+    "typescript": "^7.0.2"
+  }
+}

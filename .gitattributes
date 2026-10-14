@@ -1,0 +1,12 @@
+# Large source images go through Git LFS so they can exceed GitHub's 100 MB file limit.
+# (GitHub's free plans include 10 GiB of LFS storage and 10 GiB of bandwidth a month; each site build downloads the image once.)
+content/*.tif  filter=lfs diff=lfs merge=lfs -text
+content/*.tiff filter=lfs diff=lfs merge=lfs -text
+content/*.TIF  filter=lfs diff=lfs merge=lfs -text
+content/*.TIFF filter=lfs diff=lfs merge=lfs -text
+content/*.png  filter=lfs diff=lfs merge=lfs -text
+content/*.PNG  filter=lfs diff=lfs merge=lfs -text
+content/*.jpg  filter=lfs diff=lfs merge=lfs -text
+content/*.JPG  filter=lfs diff=lfs merge=lfs -text
+content/*.jpeg filter=lfs diff=lfs merge=lfs -text
+content/*.JPEG filter=lfs diff=lfs merge=lfs -text
