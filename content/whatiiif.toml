@@ -23,3 +23,6 @@
 
 # [publish]
 # full = true                   # false = no full-size JPEG download (saves site space)
+
+[publish]
+footer = false                  # no "Published with WhatIIIF" line at the foot of the page
