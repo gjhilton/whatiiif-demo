@@ -1,7 +1,5 @@
 # whatiiif: template only. Copies call publish.yml and offer-update.yml at the v0 tag; publishing a release moves
-# that tag to it, so every copy runs the released steps from then on. It is v0 for every release, 1.0.0 and later
-# too: a copy's workflows name the tag, and the Update workflow cannot change a copy's workflows, so a copy calling
-# v0 would be left on the last 0.x steps for ever if a 1.x release moved v1 instead.
+# that tag to it, so every copy runs the released steps from then on.
 name: Release
 
 on:
@@ -18,12 +16,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Point the v0 tag at this release
+      - name: Point the v0 tag (vMAJOR) at this release
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          git tag -f v0 "$TAG"
-          if ! git push -f origin refs/tags/v0; then
-            echo "::error title=v0 still points at the previous release::Copies run the steps at v0, so move it by hand: git fetch --tags && git tag -f v0 $TAG && git push -f origin refs/tags/v0"
+          major=${TAG%%.*}
+          git tag -f "$major" "$TAG"
+          if ! git push -f origin "refs/tags/$major"; then
+            echo "::error title=$major still points at the previous release::Copies run the steps at $major, so move it by hand: git fetch --tags && git tag -f $major $TAG && git push -f origin refs/tags/$major"
             exit 1
           fi
