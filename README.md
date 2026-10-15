@@ -1,4 +1,4 @@
-# ![WhatIIIF](engine/artwork/whatiffflogo.png)
+# ![WhatIIIF](engine/artwork/whatiiif-logo.png)
 
 **See the demo: [gjhilton.github.io/whatiiif-demo](https://gjhilton.github.io/whatiiif-demo/)**
 
@@ -138,12 +138,19 @@ The easiest way to write them is your site's **notes helper**, at
 
 1. Zoom in on a part of the picture and choose **Add a note for the part in view**, or choose **Draw a new note's
    part** and drag round it.
-2. Give the note a title and what you want to say. Add as many as you like, and put them in the order of the tour.
-3. Copy the `notes.md` it writes, follow its link to GitHub, paste it in, and click **Commit changes**.
+2. Give the note a title and what you want to say. Add as many as you like, and use the arrows beside them to put them
+   in the order of the tour.
+3. To change a note's part, open the note and choose **Show it**. Then drag its number on the picture to move the part,
+   or a corner to change its size. Or zoom in on another part and choose **Use the part in view**.
+4. Choose **Preview them on your site** to see the notes and their tour as your visitors will.
+5. Under **Put them on your site**, copy the `notes.md` it writes, follow its link to GitHub, paste it in, and click
+   **Commit changes**. The helper tells you when your site has them.
 
-![The notes helper: the picture with each note's part outlined and numbered, the buttons that add a note, and below them the first note, its title, its part of the picture and its text](engine/artwork/notes-helper.png)
+![The notes helper: the picture beside the list of notes, the first note open, its part outlined on the picture with a corner to drag at each corner](engine/artwork/notes-helper.png)
 
-It starts from your notes as they are, so come back to it to change them. It checks them as the build will.
+It starts from your notes as they are, so come back to it to change them. Your browser keeps your changes until your
+site has them, so you can leave and come back. Keep the helper open in one tab: one opened in a second tab waits until
+the first is closed. The helper checks the notes as the build will, and takes you to any that need fixing.
 
 Or write `content/notes.md` yourself:
 
@@ -167,7 +174,9 @@ Or write `content/notes.md` yourself:
 4. Click **Commit changes**. The tour follows the notes in the order they are written.
 
 For other languages, add `notes.cy.md` and so on, with the same notes in the same order; their headings need no
-links, as the notes in `notes.md` say where each part is: `## Y goleudy`.
+links, as the notes in `notes.md` say where each part is: `## Y goleudy`. The notes helper then has a place for each
+note in each language, keeps them in step as you move notes about, and gives you every file that changed to upload
+together.
 
 The notes are also written into the manifest, as IIIF annotations, so other IIIF viewers can show them: Mirador opens
 with its own list of them, where there is room beside the picture.

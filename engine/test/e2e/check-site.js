@@ -95,9 +95,18 @@ test('a shared link shows a picture that is published', async () => {
 test('the notes helper opens with the site\'s notes, or none, ready to change', async () => {
   const { notes } = await json('site.json');
   const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: 'notes.html' });
-  await page.getByRole('textbox', { name: 'notes.md' }).waitFor();
+  await page.getByRole('textbox', { name: 'notes.md', includeHidden: true }).waitFor({ state: 'attached' });
   assert.equal(await page.locator('.notes-list > li').count(), notes?.items.length ?? 0);
-  if (notes) assert.equal(await page.getByRole('alert').count(), 0, 'the notes as they are have nothing wrong with them');
+  if (notes) assert.equal(await page.locator('.note-problems, .notes-publish .problem').count(), 0, 'the notes as they are have nothing wrong with them');
+  assert.deepEqual(problems, []);
+  await close();
+});
+
+test('the page previews the notes being written in the notes helper', async () => {
+  const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: '?notes-draft' });
+  await page.locator('.preview-banner').waitFor();
+  await page.locator('.viewer').waitFor();
+  await page.waitForLoadState('networkidle');
   assert.deepEqual(problems, []);
   await close();
 });

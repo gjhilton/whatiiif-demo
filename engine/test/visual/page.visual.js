@@ -186,10 +186,11 @@ test('a page with notes, on its tour', async ({ browser }) => {
 test('the notes helper', async ({ browser }) => {
   const { page, problems, close } = await open(browser, three, { query: 'notes.html' });
   await expect(page.locator('.note-area')).toHaveCount(3);
+  await page.getByRole('button', { name: /^Note 2: / }).click();
   await page.getByRole('button', { name: 'Show note 2' }).click();
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(2500); // the picture moves to the note
-  await page.evaluate(() => scrollTo(0, 0));
+  await page.evaluate(() => document.activeElement.blur()); // no focus ring
   await expect(page).toHaveScreenshot('notes-helper.png', { fullPage: true });
   expect(problems).toEqual([]);
   await close();

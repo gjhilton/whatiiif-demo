@@ -87,12 +87,10 @@ await shoot('notes-helper.png', {
   query: 'notes.html',
   size: { width: 1280, height: 900 },
   act: async (page) => {
+    await page.getByRole('button', { name: /^Note 1: / }).click();
     await page.getByRole('button', { name: 'Show note 1' }).click();
     await page.waitForTimeout(2500); // the picture moves to the lighthouse
-    await page.evaluate(() => {
-      scrollTo(0, 0);
-      document.activeElement.blur(); // no focus ring in the picture
-    });
+    await page.evaluate(() => document.activeElement.blur()); // no focus ring
   },
 });
 await browser.close();

@@ -343,15 +343,22 @@ test('a photo turned on its side by its camera is measured upright, for its note
   assert.deepEqual({ width, height }, { width: 200, height: 300 });
 });
 
-test('the notes helper is given notes.md as written, the translations to keep in step, and where to change it on GitHub', async () => {
+test('the notes helper is given the notes files as written, and where to change them on GitHub and see them built', async () => {
   const { content, out } = await setup();
   const source = 'Look.\n\n## [The boat](#xywh=100,200,300,400)\n\nRed sails.\n';
   await writeFile(join(content, 'notes.md'), source);
   await writeFile(join(content, 'notes.cy.md'), '## Y cwch\n');
   await build({ contentDir: content, outDir: out, env: github });
-  const { notes, notesUrl } = await read(join(out, 'settings.json'));
-  assert.deepEqual(notes, { file: 'notes.md', text: source, translations: ['notes.cy.md'] });
+  const { notes, notesUrl, uploadUrl, actionsUrl } = await read(join(out, 'settings.json'));
+  assert.deepEqual(notes, {
+    file: 'notes.md',
+    language: 'en',
+    text: source,
+    translations: [{ file: 'notes.cy.md', language: 'cy', text: '## Y cwch\n', url: 'https://github.com/gjh/harbour/edit/main/content/notes.cy.md' }],
+  });
   assert.equal(notesUrl, 'https://github.com/gjh/harbour/edit/main/content/notes.md');
+  assert.equal(uploadUrl, 'https://github.com/gjh/harbour/upload/main/content', 'several files are changed at once by uploading them');
+  assert.equal(actionsUrl, 'https://github.com/gjh/harbour/actions', 'where a build that stopped says why');
 });
 
 test('without notes, the notes helper is told where on GitHub to make notes.md', async () => {

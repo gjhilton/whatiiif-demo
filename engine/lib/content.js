@@ -147,9 +147,14 @@ export async function readContent(dir, { fetch = globalThis.fetch, downloads } =
   const description = await descriptions(dir, files, config.language);
   const written = await notesFiles(dir, files, config.language);
   const notes = written && combineNotes(written, config.language);
-  // For the notes helper: the file it edits, as written, and the translations that must be kept in step with it.
+  // For the notes helper: the files it edits, as written, the site's own first; the translations follow its notes.
   const own = written?.[config.language];
-  const notesSource = own && { file: own.file, text: own.text, translations: Object.values(written).filter((other) => other !== own).map(({ file }) => file) };
+  const notesSource = own && {
+    file: own.file,
+    language: config.language,
+    text: own.text,
+    translations: Object.entries(written).flatMap(([language, { file, text }]) => (language === config.language ? [] : [{ file, language, text }])),
+  };
   const { summary, creator, date, attribution, alt, metadata } = config;
   const texts = [
     ...[title, summary, creator, date, attribution, alt, description, notes?.intro],

@@ -126,8 +126,13 @@ export async function build({ contentDir, outDir, env = process.env, log = () =>
     const github = env.GITHUB_REPOSITORY && `https://github.com/${env.GITHUB_REPOSITORY}`;
     const branch = env.GITHUB_REF_NAME ?? 'main';
     const editUrl = github && `${github}/edit/${branch}/content/whatiiif.toml`;
-    const notesUrl = github && (notesSource ? `${github}/edit/${branch}/content/${notesSource.file}` : `${github}/new/${branch}?filename=content/notes.md`);
-    await writeFile(join(outDir, 'settings.json'), JSON.stringify({ settings, editUrl, notes: notesSource, notesUrl }, null, 2));
+    const fileUrl = (file) => github && `${github}/edit/${branch}/content/${file}`;
+    const notesUrl = github && (notesSource ? fileUrl(notesSource.file) : `${github}/new/${branch}?filename=content/notes.md`);
+    const notesFiles = notesSource && { ...notesSource, translations: notesSource.translations.map((other) => ({ ...other, url: fileUrl(other.file) })) };
+    // Several files changed at once are uploaded together, in one commit; Actions says why a build stopped.
+    const uploadUrl = github && `${github}/upload/${branch}/content`;
+    const actionsUrl = github && `${github}/actions`;
+    await writeFile(join(outDir, 'settings.json'), JSON.stringify({ settings, editUrl, notes: notesFiles, notesUrl, uploadUrl, actionsUrl }, null, 2));
     // The icon and the picture a shared link shows, cut from whole-picture files already published.
     const whole = wholeImage({ info, imageId });
     await makeIcon(join(imageDir, whole.path), join(outDir, 'icon.png'));
