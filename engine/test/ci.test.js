@@ -337,6 +337,25 @@ test('packages are kept up to date in the template only, and checked before they
   await assert.rejects(read(join(template, '.github/dependabot.yml')));
 });
 
+test("once both demos are up, the README's screenshots of them are remade on a Mac and committed if they changed", async () => {
+  const text = await workflow('live.yml');
+  const job = text.slice(text.indexOf('\n  screenshots:'), text.indexOf('\n  trial:'));
+  assert.match(job, /needs: demo/);
+  assert.match(job, /runs-on: macos-/);
+  assert.match(job, /node engine\/test\/support\/readme-screenshots\.js/);
+  assert.match(job, /contents: write/);
+  assert.match(job, /git push -q origin HEAD:main/);
+});
+
+test('every Live run also tries the template in new repositories made from it, as a newcomer would', async () => {
+  const text = await workflow('live.yml');
+  const job = text.slice(text.indexOf('\n  trial:'));
+  assert.match(job, /npm run test:live/);
+  assert.match(job, /GH_TOKEN: \$\{\{ secrets\.LIVE_TRIAL_TOKEN \}\}/);
+  assert.match(job, /::error title=No LIVE_TRIAL_TOKEN::/, 'a missing token fails the run, rather than skipping the trials unseen');
+  assert.match(job, /fetch-depth: 0/);
+});
+
 test('after each change, the Live workflow publishes the template to both demos, the plain one and the one with notes', async () => {
   const text = await workflow('live.yml');
   assert.match(text, /^# whatiiif: template only\./);
@@ -345,6 +364,9 @@ test('after each change, the Live workflow publishes the template to both demos,
   }
   assert.match(text, /vars\[matrix\.demo\.repository\]/);
   assert.match(text, /secrets\[matrix\.demo\.key\]/);
+  // Kept in step after every release and every day too, not only after a change.
+  assert.match(text, /\n {2}release:\n {4}types: \[published\]/);
+  assert.match(text, /\n {2}schedule:\n {4}- cron: /);
   // The demos run publish.yml at the commit tried, so a change to it alone is tried on them too.
   assert.match(text, /paths: \[[^\]]*'\.github\/workflows\/publish\.yml'/);
 });

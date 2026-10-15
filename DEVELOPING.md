@@ -76,8 +76,8 @@ npm run test:visual  # the page against reviewed screenshots
   `engine/test/visual/screenshots` (one set per operating system, since fonts differ; CI checks the Linux set). After
   a deliberate change to how the page looks, run `npm run test:visual -- --update-snapshots`, look at every new
   picture, and commit them. For the Linux set, push and take them from the failed CI run's `visual-differences`
-  artifact. Then remake the README's screenshots of the demo and the settings helper, in `engine/artwork`, with
-  `node engine/test/support/readme-screenshots.js`.
+  artifact. The README's screenshots of the demos and the settings helper, in `engine/artwork`, are remade by Live
+  (below); by hand, `node engine/test/support/readme-screenshots.js`.
 - `live/`: tests on real GitHub (below).
 - `support/`: what the tests share: test images, temporary folders, the IIIF schema, and the harness that copies the
   template, runs the Deploy workflow's steps and opens a site in a browser.
@@ -94,26 +94,33 @@ over HTTP. It runs only in the template itself, not in copies made from it.
 ## On real GitHub
 
 The tests above run what the workflows run, but not the workflows themselves, GitHub Pages or Git LFS on GitHub.
-Two checks cover those:
+**Live** (`.github/workflows/live.yml`) covers those, and keeps everything outside this repository in step with it,
+after every change to `main`, after every release, and once a day. Copies of the template have no
+`DEMO_REPOSITORY` and skip it. Its jobs:
 
-- **Live** (`.github/workflows/live.yml`), after every change to `main`: pushes the template to each demo repository,
-  named by the `DEMO_REPOSITORY` variable (the plain demo) and `NOTES_DEMO_REPOSITORY` (the one with notes and a
-  tour), keeping its `content/` and with its workflows calling this commit's steps rather than `v0`'s, waits for the
-  demo's own Deploy workflow and runs `check-site.js` on the live site (`engine/test/live/deploy-demo.sh`). It pushes
-  with a deploy key for each demo alone, stored as the `DEMO_DEPLOY_KEY` and `NOTES_DEMO_DEPLOY_KEY` secrets. Copies
-  of the template have no `DEMO_REPOSITORY` and skip it.
-- **`npm run test:live`**, by hand, about ten minutes. Each file makes its own public repository with "Use this
-  template" (`engine/test/live/trial.js`), using your `gh` login, with its workflows calling the steps at the
-  commit tried (so push it first), and deletes it afterwards if `gh` may
-  (`gh auth refresh -s delete_repo`, once); otherwise it names the repository to delete by hand.
-  - `github.live.js` puts this commit of the template in its repository and does what a newcomer might. It uploads
-    a picture before switching Pages on and expects the run to say how to fix that, switches Pages on and re-runs,
-    then pushes a picture too big for the browser through Git LFS, sized so the site comes near the Pages limit.
-  - `release.live.js` puts a picture twice the browser's upload limit into a release of its repository, links to it
-    in `whatiiif.toml` as the README says, and checks the site and the original's download.
-  - `update.live.js` starts its repository on the previous release, publishes a picture, runs the Update workflow
-    and expects a pull request for the latest release that changes only `engine/` and the package files. Merging
-    it must republish the site. Run it after each release.
+- **demo:** pushes the template to each demo repository, named by the `DEMO_REPOSITORY` variable (the plain demo) and
+  `NOTES_DEMO_REPOSITORY` (the one with notes and a tour), keeping its `content/` and with its workflows calling this
+  commit's steps rather than `v0`'s, waits for the demo's own Deploy workflow and runs `check-site.js` on the live
+  site (`engine/test/live/deploy-demo.sh`). It pushes with a deploy key for each demo alone, stored as the
+  `DEMO_DEPLOY_KEY` and `NOTES_DEMO_DEPLOY_KEY` secrets.
+- **screenshots:** once both demos are up, remakes the README's screenshots of them on a Mac
+  (`engine/test/support/readme-screenshots.js`) and commits to `main` any that look different. Pull before working.
+- **trial:** `npm run test:live`, which makes public repositories with "Use this template" and tries the template in
+  them as a newcomer would, then deletes them. It needs the `LIVE_TRIAL_TOKEN` secret, a classic personal access
+  token with the `repo`, `workflow` and `delete_repo` scopes, and fails without it.
+
+`npm run test:live` also runs by hand, using your `gh` login, with the trials' workflows calling the steps at the
+commit tried (so push it first). It deletes each repository afterwards if `gh` may (`gh auth refresh -s delete_repo`,
+once); otherwise it names the repository to delete by hand. The trials:
+
+- `github.live.js` puts this commit of the template in its repository and does what a newcomer might. It uploads
+  a picture before switching Pages on and expects the run to say how to fix that, switches Pages on and re-runs,
+  then pushes a picture too big for the browser through Git LFS, sized so the site comes near the Pages limit.
+- `release.live.js` puts a picture twice the browser's upload limit into a release of its repository, links to it in
+  `whatiiif.toml` as the README says, and checks the site and the original's download.
+- `update.live.js` starts its repository on the previous release, publishes a picture, runs the Update workflow and
+  expects a pull request for the latest release that changes only `engine/` and the package files. Merging it must
+  republish the site.
 
 ## Releasing
 

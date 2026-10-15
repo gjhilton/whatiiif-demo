@@ -1,14 +1,24 @@
 # whatiiif: template only.
-# Checks the template on real GitHub after each change: pushes it to each demo repository, named by the
-# DEMO_REPOSITORY variable (the plain demo) and NOTES_DEMO_REPOSITORY (the one with notes and a tour), whose own
-# Deploy workflows publish it to GitHub Pages, then checks the live sites. Each is pushed to with a deploy key for
-# it alone. Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
+# Keeps everything outside this repository in step with it, and checks it on real GitHub, after each change, each
+# release, and every day (GitHub itself changes too):
+# - demo: pushes the template to each demo repository, named by the DEMO_REPOSITORY variable (the plain demo) and
+#   NOTES_DEMO_REPOSITORY (the one with notes and a tour), whose own Deploy workflows publish it to GitHub Pages, then
+#   checks the live sites. Each is pushed to with a deploy key for it alone.
+# - screenshots: once both demos are up, remakes the README's screenshots of them on a Mac and commits any that look
+#   different to main.
+# - trial: makes repositories from the template as a newcomer would and tries it in them (engine/test/live), with
+#   the LIVE_TRIAL_TOKEN secret, a token that may create and delete repositories.
+# Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
 name: Live
 
 on:
   push:
     branches: [main]
     paths: ['engine/**', 'package*.json', '.github/workflows/deploy.yml', '.github/workflows/publish.yml', '.github/workflows/live.yml']
+  release:
+    types: [published]
+  schedule:
+    - cron: '23 4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -56,3 +66,61 @@ jobs:
           node --test engine/test/e2e/check-site.js
         env:
           E2E_SITE_URL: ${{ steps.demo.outputs.url }}
+
+  screenshots:
+    needs: demo
+    if: vars.DEMO_REPOSITORY != ''
+    runs-on: macos-15 # the README's screenshots are a Mac's, as most people reading it will see the page
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - name: Remake the README's screenshots of the demos
+        run: |
+          npm ci
+          npx playwright install chromium-headless-shell
+          node engine/test/support/readme-screenshots.js
+      - name: Commit any that look different
+        run: |
+          git add engine/artwork
+          if git diff --cached --quiet; then
+            echo "The README's screenshots are up to date."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "README screenshots, remade from the demos at ${GITHUB_SHA::7}"
+          # main may have moved on while this ran; the screenshots are the only change, so they go on top of it.
+          for attempt in 1 2 3; do
+            git fetch -q origin main && git rebase -q origin/main && git push -q origin HEAD:main && exit 0
+            sleep 10
+          done
+          echo "::error title=The README's screenshots were not committed::main kept moving; run Live again."
+          exit 1
+
+  trial:
+    if: vars.DEMO_REPOSITORY != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the update trial starts a repository on the previous release, by its tag
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - name: Try the template in repositories made from it, as a newcomer would, then delete them
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error title=No LIVE_TRIAL_TOKEN::Add a classic personal access token with the repo, workflow and delete_repo scopes as the LIVE_TRIAL_TOKEN secret: the trials make repositories and delete them."
+            exit 1
+          fi
+          npm ci
+          npx playwright install --with-deps chromium-headless-shell
+          npm run test:live
+        env:
+          GH_TOKEN: ${{ secrets.LIVE_TRIAL_TOKEN }}

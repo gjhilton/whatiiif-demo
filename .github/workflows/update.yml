@@ -14,5 +14,5 @@ permissions:
 
 jobs:
   update:
-    uses: gjhilton/WhatIIIF/.github/workflows/offer-update.yml@e45ef5087b7a058eb07dad439837437d3ab6fb6f
+    uses: gjhilton/WhatIIIF/.github/workflows/offer-update.yml@3e09cac9672828a8843b527bfc6a6a69fd4a3a33
     secrets: inherit

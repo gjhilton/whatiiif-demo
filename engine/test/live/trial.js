@@ -1,4 +1,5 @@
-// Shared by the tests on real GitHub, which are run by hand, logged in with gh (about ten minutes):
+// Shared by the tests on real GitHub, which the Live workflow runs with its LIVE_TRIAL_TOKEN, and anyone can run
+// logged in with gh (about ten minutes):
 //
 //   npm run test:live
 //
@@ -94,6 +95,18 @@ export async function trialRepository(ref = 'HEAD') {
 
     /** The Deploy run GitHub started for a commit. */
     deployRunFor: (sha) => runFor('Deploy', sha),
+
+    /**
+     * What a Deploy run put at the top of its page, from its deploy job, as [level, title, message]. The job is
+     * "deploy" in a copy whose deploy.yml has the steps itself, as before 0.4.0, and "publish / deploy" in one whose
+     * deploy.yml calls publish.yml.
+     */
+    async deployAnnotations(id) {
+      const { jobs } = await ghJson('api', `repos/${repository}/actions/runs/${id}/jobs`);
+      const job = jobs.find(({ name }) => name === 'deploy' || name.endsWith(' / deploy'));
+      assert.ok(job, `run ${id} has no deploy job, only ${jobs.map(({ name }) => name).join(', ')}`);
+      return ghJson('api', `repos/${repository}/check-runs/${job.id}/annotations`, '--jq', '[.[] | [.annotation_level, .title, .message]]');
+    },
 
     /** A run once it has finished, on the given attempt (a re-run is attempt 2). */
     finished: (id, { attempt = 1, timeout = 15 * MINUTE } = {}) =>
