@@ -60,6 +60,10 @@ test('lists no size longer than 2000 pixels on either side, so a tall scroll has
   ]);
 });
 
+test('lists the smallest level even when it is longer than 2000 pixels, so a picture cut into big tiles has a whole-picture rendition', () => {
+  assert.deepEqual(imageInfo({ id: 'https://example.org/iiif/image', width: 4100, height: 100, tileSize: 2100 }).sizes, [{ width: 2050, height: 50 }]);
+});
+
 test('lists no sizes for an image that fits in a single tile', () => {
   assert.deepEqual(info(300, 200).sizes, []);
 });

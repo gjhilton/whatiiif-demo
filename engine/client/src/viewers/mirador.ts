@@ -19,9 +19,11 @@ interface MiradorInstance {
 }
 
 const WINDOW = 'whatiiif';
+const ROOM_FOR_NOTES = 720; // the narrowest pane, in CSS pixels, that keeps a useful picture beside Mirador's list of notes
 
 // Mirador keeps a window's view as the centre of the screen, in image pixels, and OpenSeadragon's zoom, which is
-// one over the width of image on screen. `aspect` is the pane's width over its height.
+// one over the width of image on screen. `aspect` is the width over the height of the part of the window showing the
+// picture, which is narrower than the pane while Mirador's list of notes is open beside it.
 const toView = (r: Region, aspect: number): ViewerState => ({ x: r.x + r.w / 2, y: r.y + r.h / 2, zoom: 1 / Math.max(r.w, r.h * aspect) });
 const toRegion = ({ x, y, zoom }: ViewerState, aspect: number): Region => {
   const w = 1 / zoom;
@@ -49,9 +51,12 @@ function theme() {
 }
 
 const adapter: ViewerAdapter = {
-  mount(el, site, { language, region, onRegionChange }) {
+  mount(el, site, { language, region, onRegionChange, onNote }) {
     el.id = 'mirador-root';
-    const aspect = () => el.clientWidth / el.clientHeight;
+    const aspect = () => {
+      const picture = el.querySelector('.openseadragon-container') ?? el;
+      return picture.clientWidth / picture.clientHeight;
+    };
 
     const instance = Mirador.viewer({
       id: el.id,
@@ -63,7 +68,15 @@ const adapter: ViewerAdapter = {
           maximized: true, // fill the pane; there is only ever one window
         },
       ],
-      window: { allowClose: false, allowMaximize: false, sideBarOpen: false },
+      // A picture with notes opens with Mirador's own list of them, which it reads from the manifest's annotations;
+      // not in someone else's page, which shows no notes (`onNote` is given where notes are shown), nor where the
+      // list would leave the picture little room, as on a phone: the page lists the notes below in any case.
+      window: {
+        allowClose: false,
+        allowMaximize: false,
+        sideBarOpen: Boolean(site.notes && onNote) && el.clientWidth >= ROOM_FOR_NOTES,
+        defaultSideBarPanel: 'annotations',
+      },
       workspace: { isWorkspaceAddVisible: false },
       workspaceControlPanel: { enabled: false },
       ...theme(),
@@ -93,21 +106,27 @@ const adapter: ViewerAdapter = {
     };
 
     // Mirador opens on the whole picture and reports that view first (it overwrites a window's
-    // initialViewerConfig), so a shared view is applied after that.
-    if (region) stepsTo(region);
+    // initialViewerConfig), so a shared view is applied after that, once the picture's part of the window has the
+    // shape it will keep.
+    let waiting = region;
     let seen: ViewerState | undefined;
     const unsubscribe = instance.store.subscribe(() => {
       const at = view();
       if (!at || at === seen || at.zoom === undefined) return;
       seen = at;
+      if (waiting) stepsTo(waiting);
+      waiting = undefined;
       if (asking || next()) return;
       onRegionChange(toRegion(at, aspect()));
     });
 
     return {
       show(part) {
-        stepsTo(part);
-        if (view()?.zoom !== undefined) next(); // otherwise Mirador's first report starts them
+        if (view()?.zoom === undefined) waiting = part; // Mirador's first report starts it
+        else {
+          stepsTo(part);
+          next();
+        }
       },
       destroy() {
         unsubscribe();

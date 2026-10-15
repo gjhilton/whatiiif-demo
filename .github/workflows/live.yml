@@ -1,12 +1,14 @@
-# Checks the template on real GitHub after each change: pushes it to the demo repository named by the
-# DEMO_REPOSITORY variable, whose own Deploy workflow publishes it to GitHub Pages, then checks the live site.
-# Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
+# whatiiif: template only.
+# Checks the template on real GitHub after each change: pushes it to each demo repository, named by the
+# DEMO_REPOSITORY variable (the plain demo) and NOTES_DEMO_REPOSITORY (the one with notes and a tour), whose own
+# Deploy workflows publish it to GitHub Pages, then checks the live sites. Each is pushed to with a deploy key for
+# it alone. Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
 name: Live
 
 on:
   push:
     branches: [main]
-    paths: ['engine/**', 'package*.json', '.github/workflows/deploy.yml', '.github/workflows/live.yml']
+    paths: ['engine/**', 'package*.json', '.github/workflows/deploy.yml', '.github/workflows/publish.yml', '.github/workflows/live.yml']
   workflow_dispatch:
 
 permissions:
@@ -19,6 +21,12 @@ jobs:
   demo:
     if: vars.DEMO_REPOSITORY != ''
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        demo:
+          - { repository: DEMO_REPOSITORY, key: DEMO_DEPLOY_KEY }
+          - { repository: NOTES_DEMO_REPOSITORY, key: NOTES_DEMO_DEPLOY_KEY }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -26,6 +34,7 @@ jobs:
           node-version-file: engine/.node-version
           cache: npm
       - name: Publish this commit through the demo's own Deploy workflow
+        if: vars[matrix.demo.repository] != ''
         id: demo
         shell: bash # with pipefail, so a failure is not hidden by tee
         run: |
@@ -36,10 +45,11 @@ jobs:
           engine/test/live/deploy-demo.sh "$DEMO_REPOSITORY" | tee demo.log
           echo "url=$(tail -1 demo.log)" >> "$GITHUB_OUTPUT"
         env:
-          DEMO_REPOSITORY: ${{ vars.DEMO_REPOSITORY }}
-          DEMO_DEPLOY_KEY: ${{ secrets.DEMO_DEPLOY_KEY }}
+          DEMO_REPOSITORY: ${{ vars[matrix.demo.repository] }}
+          DEMO_DEPLOY_KEY: ${{ secrets[matrix.demo.key] }}
           GH_TOKEN: ${{ github.token }}
       - name: Check the live site
+        if: steps.demo.outcome == 'success'
         run: |
           npm ci
           npx playwright install --with-deps chromium-headless-shell

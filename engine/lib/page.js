@@ -13,11 +13,12 @@ function inSiteLanguage(text, site) {
 }
 
 /**
- * The whole-image file a card or the fallback shows: the largest listed size no longer than `maxSide` on either side,
+ * A published file showing the whole picture: the largest listed size no longer than `maxSide` on either side,
  * else the smallest. Only an image that fits one tile lists no sizes, and that is always published as full/max.
+ * (The smallest level is always listed, however long; see imageInfo in service.js.)
  * `path` is where it is in the image service.
  */
-export function cardImage({ info, imageId, maxSide = 1200 }) {
+export function wholeImage({ info, imageId, maxSide = 1200 }) {
   const size = info.sizes.findLast((s) => Math.max(s.width, s.height) <= maxSide) ?? info.sizes[0];
   const [path, width, height] = size ? [`full/${size.width},${size.height}/0/default.jpg`, size.width, size.height] : ['full/max/0/default.jpg', info.width, info.height];
   return { path, url: `${imageId}/${path}`, width, height };
@@ -29,10 +30,45 @@ export async function makeIcon(from, to) {
 }
 
 /**
- * The <title>, icon and colours, and the tags that make a shared link show the image, its title and summary.
- * Colours chosen in whatiiif.toml come after the page's defaults and outrank them (`html:root` beats `:root`).
+ * The picture a shared link shows: the most eye-catching part of the picture in `from`, in the 1.91 to 1 shape
+ * social sites and chat apps show, rather than their own cut from its middle. Returns its size.
  */
-export function pageHead({ site, image }) {
+export async function makeCard(from, to) {
+  await sharp(from).resize(1200, 630, { fit: 'cover', position: sharp.strategy.attention }).jpeg({ quality: 85 }).toFile(to);
+  return { width: 1200, height: 630 };
+}
+
+const scriptJson = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
+
+/**
+ * What search engines are told the picture is (schema.org), including who to credit and its licence, which image
+ * search can show beside it. A date goes in only when it is a calendar date.
+ */
+function structuredData(site, image, card) {
+  const words = (text) => text && text[site.language in text ? site.language : Object.keys(text)[0]];
+  const date = words(site.date);
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'ImageObject',
+    name: words(site.title),
+    description: words(site.summary),
+    url: site.pageUrl,
+    contentUrl: site.fullUrl ?? image.url,
+    thumbnailUrl: card.url,
+    creator: site.creator && { '@type': 'Person', name: words(site.creator) },
+    dateCreated: /^\d{4}(-\d\d(-\d\d)?)?$/.test(date ?? '') ? date : undefined,
+    creditText: words(site.attribution),
+    license: site.rights,
+  };
+  return `<script type="application/ld+json">${scriptJson(data)}</script>`;
+}
+
+/**
+ * The <title>, icon and colours, the tags that make a shared link show the `card`, the title and summary, and what
+ * search engines are told. Colours chosen in whatiiif.toml come after the page's defaults and outrank them
+ * (`html:root` beats `:root`). `image` is a whole-image file, as `wholeImage` gives.
+ */
+export function pageHead({ site, image, card }) {
   const title = inSiteLanguage(site.title, site).text;
   const summary = site.summary && inSiteLanguage(site.summary, site).text;
   const meta = (attribute, name, content) => `<meta ${attribute}="${name}" content="${content}">`;
@@ -48,11 +84,12 @@ export function pageHead({ site, image }) {
     meta('property', 'og:url', escape(site.pageUrl)),
     meta('property', 'og:title', title),
     summary && meta('property', 'og:description', summary),
-    meta('property', 'og:image', escape(image.url)),
-    meta('property', 'og:image:width', image.width),
-    meta('property', 'og:image:height', image.height),
+    meta('property', 'og:image', escape(card.url)),
+    meta('property', 'og:image:width', card.width),
+    meta('property', 'og:image:height', card.height),
     meta('property', 'og:image:alt', inSiteLanguage(site.alt, site).text),
     meta('name', 'twitter:card', 'summary_large_image'),
+    structuredData(site, image, card),
   ]
     .filter(Boolean)
     .join('\n    ');
@@ -79,7 +116,7 @@ export function pageBody({ site, image }) {
     `<img src="${escape(image.url)}" width="${image.width}" height="${image.height}" alt="${alt.text}"${alt.lang}>`,
     `<p>${links.join(' · ')}</p>`,
     '</div></noscript>',
-    `<script type="application/json" id="whatiiif-site">${JSON.stringify(site).replaceAll('<', '\\u003c')}</script>`,
+    `<script type="application/json" id="whatiiif-site">${scriptJson(site)}</script>`,
   ]
     .filter(Boolean)
     .join('\n');

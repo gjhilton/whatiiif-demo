@@ -1,0 +1,15 @@
+# whatiiif: template only. Copies of the template call this from their Update workflow (update.yml), at the v0
+# tag. It runs the copy's own engine/ci/update.sh, which opens a pull request when a newer release is out.
+name: Offer update
+
+on:
+  workflow_call:
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: engine/ci/update.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

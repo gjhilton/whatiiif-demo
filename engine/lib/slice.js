@@ -6,6 +6,12 @@ import { imageInfo, missingFiles } from './service.js';
 
 const anySize = { limitInputPixels: false }; // sharp refuses images over 268 megapixels unless told otherwise
 
+/** How big `source` is as it will be published: upright, as its camera meant it. Reads only the file's header. */
+export async function pictureSize(source) {
+  const { autoOrient } = await sharp(source, anySize).metadata();
+  return { width: autoOrient.width, height: autoOrient.height };
+}
+
 /**
  * Slices `source` into a static IIIF Image API 3.0 level 0 service in `outDir` (empty, or not there yet), and
  * returns its info.json. Every published image is upright, opaque, 8-bit sRGB, and carries none of the source's

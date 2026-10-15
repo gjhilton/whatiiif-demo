@@ -103,10 +103,12 @@ export const ELSEWHERE = 'https://elsewhere.example/post.html';
  * it the site is fetched over the network, as a visitor would. With `elsewhere`, the page opened is instead
  * one at ELSEWHERE holding that HTML. `colorScheme` is the visitor's choice of light or dark.
  */
-export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', colorScheme = 'light', javaScriptEnabled = true, elsewhere }) {
+export async function browse(browser, { siteUrl, fileFor, query = '', locale = 'en-GB', colorScheme = 'light', javaScriptEnabled = true, elsewhere, device }) {
   const context = await browser.newContext({
     viewport: { width: 1200, height: 900 },
-    permissions: ['clipboard-read', 'clipboard-write'],
+    // Only Chromium lets a test read the clipboard.
+    permissions: browser.browserType().name() === 'chromium' ? ['clipboard-read', 'clipboard-write'] : [],
+    ...device, // a phone or tablet, as playwright's `devices` describe them, in place of a desktop window
     locale,
     colorScheme,
     javaScriptEnabled,

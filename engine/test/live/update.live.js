@@ -38,7 +38,8 @@ test(`the Update workflow offers ${latest} as a pull request that leaves content
   assert.equal((await trial.finished(id)).conclusion, 'success');
 
   [offer] = await ghJson('pr', 'list', '-R', trial.repository, '--json', 'number,title,body');
-  assert.equal(offer?.title, `Update whatiiif to ${latest.replace(/^v/, '')}`);
+  // Written by the previous release's update.sh, from before the project was called WhatIIIF, or after.
+  assert.match(offer?.title ?? '', new RegExp(`^Update (whatiiif|WhatIIIF) to ${latest.replace(/^v/, '').replaceAll('.', '\\.')}$`));
   assert.match(offer.body, /Your `content\/` is untouched/);
   // ci.yml and live.yml run only in the template, so they are not passed on. The wording is the previous release's.
   const workflows = ['.github/workflows', ':!.github/workflows/ci.yml', ':!.github/workflows/live.yml'];

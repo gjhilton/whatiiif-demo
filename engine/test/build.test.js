@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile, readFile, copyFile, rm, readdir } from 'node:fs/promises';
+import { access, writeFile, readFile, copyFile, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { build } from '../lib/build.js';
 import { missingFiles } from '../lib/service.js';
@@ -96,9 +96,9 @@ test('personalises the built page: a social card showing a published picture, an
 
   assert.equal((await read(join(out, 'site.json'))).pageUrl, 'https://example.org/site/');
   const html = await readFile(join(out, 'index.html'), 'utf8');
-  const card = html.match(/<meta property="og:image" content="https:\/\/example\.org\/site\/(iiif\/image\/full\/[^"]+)">/);
-  assert.ok(card, 'the card picture is an absolute address on the site');
-  assert.deepEqual(await readdir(join(out, card[1], '..')), ['default.jpg'], 'and that file is published');
+  assert.ok(html.includes('<meta property="og:image" content="https://example.org/site/card.jpg">'), 'the card picture is an absolute address on the site');
+  const { width, height, format } = await sharp(join(out, 'card.jpg')).metadata();
+  assert.deepEqual({ width, height, format }, { width: 1200, height: 630, format: 'jpeg' }, 'in the shape social sites show');
   assert.ok(html.includes('alt="Fishing boats at dusk"'));
 });
 
@@ -202,7 +202,8 @@ test('in a workflow run, anything worth a look is a warning, and the summary say
   assert.match(summary, /\*\*https:\/\/gjh\.github\.io\/harbour\/\*\*/);
   assert.match(summary, /\| Picture \| harbour\.tif, 2,000 × 1,500 pixels \|/);
   assert.match(summary, /\| IIIF manifest \| https:\/\/gjh\.github\.io\/harbour\/iiif\/manifest\.json \|/);
-  assert.match(summary, /!\[Harbour\]\(https:\/\/gjh\.github\.io\/harbour\/iiif\/image\/full\/[^)]+\)/);
+  assert.match(summary, /\| Settings \| \[Change them with the settings helper\]\(https:\/\/gjh\.github\.io\/harbour\/settings\.html\) \|/);
+  assert.match(summary, /!\[Harbour\]\(https:\/\/gjh\.github\.io\/harbour\/card\.jpg\)/, 'the picture a shared link shows');
   assert.match(summary, /- content\/descripton\.md is not used/);
 });
 
@@ -211,4 +212,127 @@ test('in a workflow run, a message over several lines stays one annotation', asy
   assert.match(stdout, /^::error title=Your site was not built::No image found in content\/\. .*$/m);
   const { escapeAnnotation } = await import('../lib/report.js');
   assert.equal(escapeAnnotation('50% done\nthen\r more'), '50%25 done%0Athen%0D more');
+});
+
+// The tiles of a 2000x1500 picture at the default quality, 85, without the full-size JPEG: what it takes to fit.
+async function tilesAt85() {
+  const { content, out } = await setup('[publish]\nfull = false');
+  return (await build({ contentDir: content, outDir: out, env: {} })).bytes;
+}
+
+test('tiles too big for GitHub Pages are made again at a lower quality, and the build says so', async () => {
+  const budgetBytes = Math.round((await tilesAt85()) * 0.9);
+  const { content, out } = await setup();
+  const warnings = [];
+  const result = await build({ contentDir: content, outDir: out, env: {}, budgetBytes, warn: (message) => warnings.push(message) });
+  assert.ok(result.bytes <= budgetBytes, `${result.bytes} bytes fit in ${budgetBytes}`);
+  assert.equal(result.droppedFull, true, 'the full-size JPEG goes first');
+  assert.match(warnings.join('\n'), /The tiles were too big for GitHub Pages at quality 85, so they were made at quality (75|65|55|45)\./);
+  assert.deepEqual(await missingFiles(join(out, 'iiif/image')), []);
+});
+
+test('a picture too big for GitHub Pages at any quality stops the build, saying how much smaller it must be', async () => {
+  const { content, out } = await setup();
+  await assert.rejects(
+    build({ contentDir: content, outDir: out, env: {}, budgetBytes: 100_000 }),
+    /The picture is too big for GitHub Pages: its tiles take [\d.]+ MB even at quality 45, and [\d.]+ MB fit\. Make it smaller: about \d+% of its width and height would fit\./,
+  );
+});
+
+test('the summary of a run says how many notes the picture has, and in which languages', async () => {
+  const { content } = await setup();
+  await writeFile(join(content, 'notes.md'), '## [The boat](#xywh=100,200,300,400)\n\n## [The gull](#xywh=10,20,30,40)\n');
+  await writeFile(join(content, 'notes.cy.md'), '## Y cwch\n\n## Yr wylan\n');
+  const { summary } = await buildInActions(content, await tempDir('dist'));
+  assert.match(summary, /\| Notes \| 2, in English and Welsh \|/);
+});
+
+test('the page is told who made the picture, when, and how big it is', async () => {
+  const { content, out } = await setup('creator = "J. M. W. Turner"\ndate = { de = "um 1890" }\ndimensions = "120 × 90 cm"');
+  const warnings = [];
+  await build({ contentDir: content, outDir: out, env: {}, warn: (message) => warnings.push(message) });
+  const site = await read(join(out, 'site.json'));
+  assert.deepEqual([site.creator, site.date, site.dimensions], [{ en: 'J. M. W. Turner' }, { de: 'um 1890' }, { width: 120, height: 90, unit: 'cm', text: '120 × 90 cm' }]);
+  assert.deepEqual(site.languages, ['en', 'de']);
+  assert.deepEqual(warnings, []);
+});
+
+test('dimensions that are not the shape of the picture are worth a look', async () => {
+  const { content, out } = await setup('dimensions = "120 × 80 cm"'); // the picture is 2000 x 1500, 4:3
+  const warnings = [];
+  await build({ contentDir: content, outDir: out, env: {}, warn: (message) => warnings.push(message) });
+  assert.deepEqual(warnings, [
+    'The dimensions, 120 × 80 cm, are not the shape of the picture, 2,000 × 1,500 pixels: is one of them wrong, or the picture cropped? Measurements follow the width.',
+  ]);
+});
+
+test('the settings helper is given the settings as written, and where to change them on GitHub', async () => {
+  const { content, out } = await setup('summary = "A view"\n[tiles]\nquality = 70');
+  await build({ contentDir: content, outDir: out, env: github });
+  const { settings, editUrl } = await read(join(out, 'settings.json'));
+  assert.deepEqual(settings.summary, { en: 'A view' });
+  assert.equal(settings.title, undefined, 'not the title made from the file name, which was not written');
+  assert.equal(settings.tiles.quality, 70);
+  assert.equal(editUrl, 'https://github.com/gjh/harbour/edit/main/content/whatiiif.toml');
+});
+
+test('notes on the picture reach the page, and the manifest as annotations a IIIF viewer shows', async () => {
+  const { content, out } = await setup();
+  await writeFile(join(content, 'notes.md'), '## [The boat](#xywh=100,200,300,400)\n\nRed sails.\n');
+  await build({ contentDir: content, outDir: out, env: github });
+  const site = await read(join(out, 'site.json'));
+  assert.deepEqual(site.notes, { items: [{ region: { x: 100, y: 200, w: 300, h: 400 }, title: { en: 'The boat' }, text: { en: '<p>Red sails.</p>\n' } }] });
+  const [page] = (await read(join(out, 'iiif/manifest.json'))).items[0].annotations;
+  assert.equal(page.items[0].target, 'https://gjh.github.io/harbour/iiif/canvas/1#xywh=100,200,300,400');
+});
+
+test('a note about a part outside the picture stops the build, saying how big the picture is', async () => {
+  const { content, out } = await setup();
+  await writeFile(join(content, 'notes.md'), '## [The boat](#xywh=1900,200,300,400)\n');
+  await assert.rejects(
+    build({ contentDir: content, outDir: out, env: {} }),
+    /content\/notes\.md: the note "The boat" is about 1900,200,300,400, which runs off the picture, 2,000 × 1,500 pixels\. Copy its link from "Link to this view" again\./,
+  );
+});
+
+test('a picture cut into tiles over 2000 pixels across, without the full-size JPEG, still has an icon, a card and a thumbnail', async () => {
+  const content = await tempDir('content');
+  const out = await tempDir('dist');
+  await copyFile(await makeImage(4100, 100), join(content, 'scroll.tif'));
+  await writeFile(join(content, 'whatiiif.toml'), '[tiles]\nsize = 2100\n[publish]\nfull = false');
+  await writeFile(join(out, 'index.html'), builtPage);
+  await build({ contentDir: content, outDir: out, env: {} });
+  const manifest = await read(join(out, 'iiif/manifest.json'));
+  const html = await readFile(join(out, 'index.html'), 'utf8');
+  const fallback = html.match(/<img src="([^"]+)"/)[1];
+  for (const url of [manifest.thumbnail[0].id, manifest.items[0].items[0].items[0].body.id, fallback]) {
+    await access(join(out, url.replace('http://localhost:4173/', '')));
+  }
+  await access(join(out, 'icon.png'));
+  await access(join(out, 'card.jpg'));
+});
+
+test('an empty SITE_BASE_URL counts as none', async () => {
+  const { content, out } = await setup();
+  await build({ contentDir: content, outDir: out, env: { SITE_BASE_URL: '' } });
+  assert.equal((await read(join(out, 'site.json'))).pageUrl, 'http://localhost:4173/');
+});
+
+test('a note outside the picture stops the build before the picture is sliced, which can take minutes', async () => {
+  const { content, out } = await setup();
+  await writeFile(join(content, 'notes.md'), '## [The boat](#xywh=1900,200,300,400)\n');
+  const logged = [];
+  await assert.rejects(build({ contentDir: content, outDir: out, env: {}, log: (line) => logged.push(line) }), /runs off the picture/);
+  assert.deepEqual(logged.filter((line) => line.startsWith('Slicing')), []);
+});
+
+test('a photo turned on its side by its camera is measured upright, for its notes as for its tiles', async () => {
+  const content = await tempDir('content');
+  const out = await tempDir('dist');
+  // 300 wide and 200 high as stored, 200 wide and 300 high as seen.
+  await sharp({ create: { width: 300, height: 200, channels: 3, background: '#808080' } }).jpeg().withMetadata({ orientation: 6 }).toFile(join(content, 'phone.jpg'));
+  await writeFile(join(content, 'notes.md'), '## [The top](#xywh=0,250,200,50)\n');
+  await build({ contentDir: content, outDir: out, env: {} });
+  const { width, height } = await read(join(out, 'site.json'));
+  assert.deepEqual({ width, height }, { width: 200, height: 300 });
 });

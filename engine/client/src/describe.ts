@@ -1,5 +1,7 @@
-// Names for things the site links to, as a visitor would put them: a licence by its short name, a file by its
-// kind and size.
+// How the page puts things for a visitor: a licence by its short name, a file by its kind and size, a citation,
+// and a length on the scale bar.
+import type { Site } from './site';
+import { inLanguage } from './language.ts'; // with its extension, so engine/test can run this file in Node as it is
 
 // RightsStatements.org's statements, by the code in their address.
 const STATEMENTS: Record<string, string> = {
@@ -34,4 +36,37 @@ export function fileSize(bytes: number): string {
 }
 
 /** A picture's media type by the name people know its format by. */
-export const formatName = (mediaType: string) => ({ 'image/tiff': 'TIFF', 'image/png': 'PNG', 'image/jpeg': 'JPEG' })[mediaType] ?? mediaType;
+export const formatName = (mediaType: string) =>
+  ({ 'image/tiff': 'TIFF', 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WebP', 'image/avif': 'AVIF', 'image/gif': 'GIF' })[mediaType] ?? mediaType;
+
+/**
+ * The picture cited as a reader sees it, in `language` and at the view in `link`: who made it and when, its title,
+ * who to credit, and the day it was `viewed`.
+ */
+export function citation(site: Site, language: string, link: string, viewed: Date): string {
+  const words = (text?: Site['title']) => text && inLanguage(text, language, site).text;
+  const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
+  const [creator, date, title, credit] = [words(site.creator), words(site.date), words(site.title)!, words(site.attribution)];
+  const when = date ? ` (${date})` : '';
+  const what = creator ? `${creator}${when} ${sentence(title)}` : sentence(`${title}${when}`);
+  const day = viewed.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return [what, credit && sentence(credit), `Available at: ${link} (Accessed: ${day}).`].filter(Boolean).join(' ');
+}
+
+export type Unit = 'mm' | 'cm' | 'm' | 'in';
+const MILLIMETRES = { mm: 1, cm: 10, m: 1000 };
+
+/**
+ * The scale bar for a view in which one screen pixel covers `perPixel` of `unit` of the original: the longest round
+ * length (1, 2 or 5, times a power of ten) no more than `longest` pixels long, in metric or in inches.
+ */
+export function scaleLength(perPixel: number, unit: Unit, longest = 100): { pixels: number; label: string } {
+  const [perPixelInBase, base] = unit === 'in' ? [perPixel, 1] : [perPixel * MILLIMETRES[unit], 1];
+  const fits = longest * perPixelInBase * base;
+  const power = 10 ** Math.floor(Math.log10(fits));
+  const length = Number(([5, 2, 1].map((step) => step * power).find((step) => step <= fits) ?? power).toPrecision(12));
+  const pixels = length / perPixelInBase;
+  if (unit === 'in') return { pixels, label: `${length} in` };
+  const [amount, name] = length >= 1000 ? [length / 1000, 'm'] : length >= 10 ? [length / 10, 'cm'] : [length, 'mm'];
+  return { pixels, label: `${Number(amount.toPrecision(12))} ${name}` };
+}

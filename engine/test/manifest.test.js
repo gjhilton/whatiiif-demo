@@ -115,6 +115,9 @@ test('gives every text in each language it was written in, and our own words in 
 const everySetting = `
 language = "cy"
 title = { cy = "Harbwr", en = "Harbour" }
+creator = "Anhysbys"
+date = "1890"
+dimensions = "120 × 80 cm"
 summary = "A view."
 attribution = "Example Museum"
 rights = "https://creativecommons.org/licenses/by/4.0/"
@@ -141,3 +144,77 @@ for (const [name, { toml = '', ...overrides }] of Object.entries(cases)) {
     assert.deepEqual(schemaProblems(buildManifest({ ...base, config, ...overrides })), []);
   });
 }
+
+test('who made it, when, and how big it is lead the metadata, under labels of our own', () => {
+  const m = buildManifest({
+    ...base,
+    config: {
+      title: { en: 'Harbour' },
+      creator: { en: 'J. M. W. Turner' },
+      date: { cy: 'tua 1890' },
+      dimensions: { width: 120, height: 80, unit: 'cm', text: '120 × 80 cm' },
+      metadata: [{ label: { en: 'Medium' }, value: { en: 'Oil on canvas' } }],
+    },
+  });
+  assert.deepEqual(m.metadata, [
+    { label: { en: ['Creator'] }, value: { en: ['J. M. W. Turner'] } },
+    { label: { en: ['Date'] }, value: { cy: ['tua 1890'] } },
+    { label: { en: ['Dimensions'] }, value: { none: ['120 × 80 cm'] } },
+    { label: { en: ['Medium'] }, value: { en: ['Oil on canvas'] } },
+  ]);
+});
+
+test('the canvas says how big the original is, as IIIF\'s physical dimensions service', () => {
+  const { width } = base.info;
+  for (const [unit, scale, as] of [['cm', 120 / width, 'cm'], ['m', (1.2 * 100) / width, 'cm'], ['in', 47 / width, 'in']]) {
+    const size = { cm: 120, m: 1.2, in: 47 }[unit];
+    const m = buildManifest({ ...base, config: { ...base.config, dimensions: { width: size, height: 1, unit, text: '' } } });
+    assert.deepEqual(m.items[0].service, [
+      { id: `${m.items[0].id}/physdim`, type: 'PhysicalDimensions', profile: 'http://iiif.io/api/annex/services/physdim', physicalScale: scale, physicalUnits: as },
+    ]);
+  }
+  assert.equal('service' in buildManifest(base).items[0], false);
+});
+
+const notes = {
+  intro: { en: '<p>About.</p>' },
+  items: [
+    { region: { x: 1, y: 2, w: 3, h: 4 }, title: { en: 'Boat & sail', cy: 'Cwch' }, text: { en: '<p>Red.</p>\n' } },
+    { region: { x: 5, y: 6, w: 7, h: 8 }, title: { en: 'Gull' } },
+  ],
+};
+
+test('notes on the picture are commenting annotations on its canvas, in each language they are written in', () => {
+  const m = buildManifest({ ...base, config: { ...base.config, language: 'en' }, notes });
+  const canvas = m.items[0];
+  assert.deepEqual(canvas.annotations, [
+    {
+      id: `${canvas.id}/notes`,
+      type: 'AnnotationPage',
+      items: [
+        {
+          id: `${canvas.id}/notes/1`,
+          type: 'Annotation',
+          motivation: 'commenting',
+          body: [
+            { type: 'TextualBody', value: '<p><strong>Boat &amp; sail</strong></p>\n<p>Red.</p>\n', format: 'text/html', language: 'en' },
+            { type: 'TextualBody', value: '<p><strong>Cwch</strong></p>\n', format: 'text/html', language: 'cy' },
+          ],
+          target: `${canvas.id}#xywh=1,2,3,4`,
+        },
+        {
+          id: `${canvas.id}/notes/2`,
+          type: 'Annotation',
+          motivation: 'commenting',
+          body: [{ type: 'TextualBody', value: '<p><strong>Gull</strong></p>\n', format: 'text/html', language: 'en' }],
+          target: `${canvas.id}#xywh=5,6,7,8`,
+        },
+      ],
+    },
+  ]);
+  assert.equal('annotations' in buildManifest(base).items[0], false, 'none without notes');
+});
+
+test('the manifest with notes passes the IIIF Presentation 3.0 schema', { skip: schemaUnavailable }, () => {
+  assert.deepEqual(schemaProblems(buildManifest({ ...base, config: { ...base.config, language: 'en' }, notes })), []);
+});

@@ -6,7 +6,7 @@
 // (`gh auth refresh -s delete_repo`, once); otherwise it says which repository to delete by hand.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { tempDir } from '../support/tmp.js';
@@ -34,22 +34,38 @@ export async function poll(condition, what, timeout) {
 }
 
 // Git with an identity, pushing as the gh login over HTTPS. Git LFS only where a step asks for it.
-const AS_ME = ['-c', 'user.name=whatiiif live test', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com',
+const AS_ME = ['-c', 'user.name=WhatIIIF live test', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com',
   '-c', 'commit.gpgsign=false', '-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential'];
 const NO_LFS = ['-c', 'filter.lfs.clean=', '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.process=', '-c', 'filter.lfs.required=false'];
 export const git = (cwd, args, { lfs = false } = {}) =>
   exec('git', [...AS_ME, ...(lfs ? [] : NO_LFS), ...args], { cwd, env: { ...process.env, GIT_LFS_SKIP_SMUDGE: '1' }, maxBuffer: 64 * 1024 * 1024 });
 
 /**
+ * Points a copy's workflows, which call the template's steps at the v0 tag (the last release), at commit `sha`
+ * instead, so a trial runs the steps being tried. GitHub must have that commit.
+ */
+async function callStepsAt(work, sha, upstream) {
+  if ((await run('gh', ['api', `repos/${upstream}/commits/${sha}`, '--silent'])).code !== 0) {
+    throw new Error(`Push ${sha} to ${upstream} first: a trial's workflows call the steps kept there, at that commit.`);
+  }
+  const dir = join(work, '.github/workflows');
+  for (const file of await readdir(dir)) {
+    const text = await readFile(join(dir, file), 'utf8');
+    await writeFile(join(dir, file), text.replace(/(uses: \S+\/\.github\/workflows\/[^@\s]+)@v0$/gm, `$1@${sha}`));
+  }
+}
+
+/**
  * A new public repository made with "Use this template", cloned, with the template's files (everything but
  * content/) replaced by those at `ref` here: HEAD to try this commit, or a release tag to start from that release.
+ * Its workflows call the template's steps at `ref` too.
  */
 export async function trialRepository(ref = 'HEAD') {
   const owner = await gh('api', 'user', '--jq', '.login');
   const name = `whatiiif-trial-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const repository = `${owner}/${name}`;
   const upstream = (await readFile(join(template, 'engine/UPSTREAM'), 'utf8')).trim();
-  await gh('repo', 'create', repository, '--template', upstream, '--public', '--description', 'A short-lived test of whatiiif; deleted when the test ends');
+  await gh('repo', 'create', repository, '--template', upstream, '--public', '--description', 'A short-lived test of WhatIIIF; deleted when the test ends');
   // GitHub copies the template a moment after saying the repository exists.
   await poll(async () => (await run('gh', ['api', `repos/${repository}/contents/engine/VERSION`])).code === 0, 'the template to be copied', 2 * MINUTE);
 
@@ -59,6 +75,8 @@ export async function trialRepository(ref = 'HEAD') {
   const { stdout: top } = await exec('git', ['ls-tree', '--name-only', ref], { cwd: template });
   const entries = top.split('\n').filter((entry) => entry && entry !== 'content');
   await exec('bash', ['-c', 'git archive "$1" -- "${@:2}" | tar -x -C "$0"', work, ref, ...entries], { cwd: template });
+  const { stdout: sha } = await exec('git', ['rev-parse', `${ref}^{commit}`], { cwd: template });
+  await callStepsAt(work, sha.trim(), upstream);
   await git(work, ['add', '-A']);
   if ((await run('git', ['diff', '--cached', '--quiet'], { cwd: work })).code !== 0) {
     await git(work, ['commit', '-q', '-m', `The template at ${ref}`]);

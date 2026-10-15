@@ -3,8 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { embedCode, linkTo, readAddress, regionLinked, withChoice, withRegion } from '../client/src/address.ts';
-import { fileSize, formatName, rightsName } from '../client/src/describe.ts';
-import { chooseLanguage, inLanguage } from '../client/src/language.ts';
+import { citation, fileSize, formatName, rightsName, scaleLength } from '../client/src/describe.ts';
+import { chooseLanguage, htmlLang, inLanguage } from '../client/src/language.ts';
+import { tilesFor } from '../client/src/save.ts';
+import { expectedRequests, imageInfo } from '../lib/service.js';
 
 const site = { width: 4000, height: 3000, pageUrl: 'https://gjh.github.io/harbour/', language: 'en', languages: ['en'] };
 const welsh = { ...site, language: 'cy', languages: ['cy', 'en', 'pt-BR'] };
@@ -32,6 +34,8 @@ const regions = [
   ['#xywh=pixel:100,200,300,400', { x: 100, y: 200, w: 300, h: 400 }, 'in pixels, said so'],
   ['#xywh=3900,2900,500,500', { x: 3900, y: 2900, w: 100, h: 100 }, 'running off the picture, clipped to it'],
   ['#xywh=0,0,4000,3000', undefined, 'the whole picture, which needs no fragment'],
+  ['#xywh=2,1,3996,2998', undefined, 'the whole picture but for a sliver at its edges, as a viewer reports it'],
+  ['#xywh=30,0,3970,3000', { x: 30, y: 0, w: 3970, h: 3000 }, 'all but a strip someone left out on purpose'],
   ['#xywh=5000,5000,10,10', undefined, 'off the picture altogether'],
   ['#xywh=percent:10,10,20,20', undefined, 'in percent, which links never use'],
   ['#xywh=1,2,3', undefined, 'malformed'],
@@ -109,7 +113,8 @@ for (const [url, name] of licences) {
 
 test('downloads are described the way a computer shows files', () => {
   assert.deepEqual([fileSize(900), fileSize(48_000), fileSize(4_120_000), fileSize(123_400_000), fileSize(2_345_000_000)], ['1 KB', '48 KB', '4.1 MB', '123 MB', '2.3 GB']);
-  assert.deepEqual([formatName('image/tiff'), formatName('image/png'), formatName('image/jpeg')], ['TIFF', 'PNG', 'JPEG']);
+  const formats = ['image/tiff', 'image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
+  assert.deepEqual(formats.map(formatName), ['TIFF', 'PNG', 'JPEG', 'WebP', 'AVIF', 'GIF']);
 });
 
 const choices = [
@@ -132,4 +137,78 @@ test('a text missing in the language shown is given in the site’s own, else in
   assert.deepEqual(inLanguage({ cy: 'Harbwr' }, 'en', welsh), { text: 'Harbwr', lang: 'cy' });
   assert.deepEqual(inLanguage({ de: 'Hafen' }, 'en', welsh), { text: 'Hafen', lang: 'de' });
   assert.deepEqual(inLanguage({ none: '1890' }, 'en', welsh), { text: '1890', lang: undefined });
+});
+
+// A citation names what is cited as a reader of the page sees it: in their language, at the view they are looking at.
+const viewed = new Date(2026, 9, 15);
+const link = 'https://gjh.github.io/harbour/?viewer=openseadragon#xywh=1,2,3,4';
+const cited = { ...welsh, title: { en: 'Harbour at dusk', cy: 'Harbwr' }, metadata: [] };
+
+test('a citation gives who made the picture and when, its title, its credit, the link to the view, and the day it was viewed', () => {
+  const site = { ...cited, creator: { en: 'J. M. W. Turner' }, date: { en: 'about 1890' }, attribution: { en: 'Example Museum' } };
+  assert.equal(
+    citation(site, 'en', link, viewed),
+    'J. M. W. Turner (about 1890) Harbour at dusk. Example Museum. Available at: https://gjh.github.io/harbour/?viewer=openseadragon#xywh=1,2,3,4 (Accessed: 15 October 2026).',
+  );
+});
+
+test('a citation leaves out what the site does not say, and is in the language the visitor reads', () => {
+  assert.equal(citation(cited, 'cy', link, viewed), `Harbwr. Available at: ${link} (Accessed: 15 October 2026).`);
+  assert.equal(citation({ ...cited, date: { en: '1890' }, attribution: { en: 'Example Museum.' } }, 'en', link, viewed), `Harbour at dusk (1890). Example Museum. Available at: ${link} (Accessed: 15 October 2026).`);
+});
+
+// A scale bar of the longest round length (1, 2 or 5, times a power of ten) that is no more than 100 pixels long.
+const scales = [
+  [0.02, 'cm', { pixels: 100, label: '2 cm' }],
+  [0.2, 'mm', { pixels: 100, label: '2 cm' }],
+  [0.005, 'mm', { pixels: 100, label: '0.5 mm' }],
+  [1, 'cm', { pixels: 100, label: '1 m' }],
+  [0.03, 'm', { pixels: 66.66666666666667, label: '2 m' }],
+  [0.01, 'in', { pixels: 100, label: '1 in' }],
+  [0.15, 'in', { pixels: 66.66666666666667, label: '10 in' }],
+];
+for (const [perPixel, unit, bar] of scales) {
+  test(`at ${perPixel} ${unit} a pixel, the scale bar shows ${bar.label}`, () => {
+    assert.deepEqual(scaleLength(perPixel, unit), bar);
+  });
+}
+
+// Saving a view assembles it from published tiles: only files the build publishes, covering the region exactly.
+const pictures = [[4000, 3000, 512], [4999, 3001, 512], [300, 200, 512], [2000, 37, 256], [10000, 8000, 512]];
+const parts = (W, H) => [undefined, { x: 0, y: 0, w: W, h: H }, { x: 1, y: 2, w: Math.ceil(W / 3), h: Math.ceil(H / 2) }, { x: W - 7, y: H - 5, w: 7, h: 5 }];
+
+for (const [W, H, tileSize] of pictures) {
+  for (const region of parts(W, H)) {
+    test(`saving ${region ? Object.values(region).join(',') : 'the whole'} of a ${W}x${H} picture asks only for published files, which cover it`, () => {
+      const info = imageInfo({ id: 'https://e.org/iiif/image', width: W, height: H, tileSize });
+      const published = new Set(expectedRequests(info));
+      const plan = tilesFor(info, region);
+      const part = region ?? { x: 0, y: 0, w: W, h: H };
+      assert.ok(Math.max(plan.width, plan.height) <= 4096, `${plan.width}x${plan.height} is no bigger than 4096 on a side`);
+      assert.deepEqual([plan.width, plan.height], [Math.ceil(part.w / plan.scale), Math.ceil(part.h / plan.scale)]);
+      for (const { path } of plan.tiles) assert.ok(published.has(path), `${path} is published`);
+      // Every pixel of the saved picture comes from some tile.
+      const covered = (px, py) => plan.tiles.some(({ x, y, w, h }) => px >= x && px < x + w && py >= y && py < y + h);
+      for (const [px, py] of [[0, 0], [plan.width - 1, 0], [0, plan.height - 1], [plan.width - 1, plan.height - 1], [Math.floor(plan.width / 2), Math.floor(plan.height / 2)]]) {
+        assert.ok(covered(px, py), `pixel ${px},${py} is covered`);
+      }
+    });
+  }
+}
+
+test('saving a view uses full-resolution tiles when they fit, and a lower level when they would not', () => {
+  const info = imageInfo({ id: 'x', width: 10000, height: 8000, tileSize: 512 });
+  assert.equal(tilesFor(info, { x: 0, y: 0, w: 3000, h: 2000 }).scale, 1);
+  assert.equal(tilesFor(info, { x: 0, y: 0, w: 5000, h: 2000 }).scale, 2);
+  assert.equal(tilesFor(info).scale, 4);
+});
+
+test('a tile is placed where its part of the picture falls in the saved one', () => {
+  const info = imageInfo({ id: 'x', width: 4000, height: 3000, tileSize: 512 });
+  const { tiles } = tilesFor(info, { x: 600, y: 520, w: 100, h: 100 });
+  assert.deepEqual(tiles, [{ path: '512,512,512,512/512,512/0/default.jpg', x: -88, y: -8, w: 512, h: 512 }]);
+});
+
+test('text in no particular language is not marked as in a language called "none"', () => {
+  assert.deepEqual(['cy', 'pt-BR', 'none'].map(htmlLang), ['cy', 'pt-BR', undefined]);
 });

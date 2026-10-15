@@ -10,6 +10,15 @@ export const annotation = (kind, title, message) => `::${kind} title=${title}::$
 const plain = (text) => text.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c]);
 const number = (n) => n.toLocaleString('en-GB');
 const megabytes = (bytes) => `${number(Math.max(1, Math.round(bytes / 1024 / 1024)))} MB`;
+const english = new Intl.DisplayNames(['en'], { type: 'language' });
+const languageName = (tag) => (tag === 'none' ? 'no particular language' : (english.of(tag) ?? tag));
+
+/** How many notes there are, and the languages they are written in, the site's own first: "5, in English and Welsh". */
+function notesRow({ notes: { items }, languages: all }) {
+  const languages = all.filter((tag) => items.some(({ title }) => tag in title)).map(languageName);
+  const list = languages.length > 1 ? `${languages.slice(0, -1).join(', ')} and ${languages.at(-1)}` : languages[0];
+  return `${number(items.length)}, in ${list}`;
+}
 
 /** The step summary of a build that worked: where the site will be, what was published, and anything worth a look. */
 export function builtSummary({ pageUrl, manifestId, bytes, droppedFull, image, card, site }, warnings) {
@@ -17,7 +26,9 @@ export function builtSummary({ pageUrl, manifestId, bytes, droppedFull, image, c
   const rows = [
     ['Picture', `${plain(image.name)}, ${number(site.width)} × ${number(site.height)} pixels`],
     ['Published', `${megabytes(bytes)} of tiles${site.fullUrl ? ' and a full-size JPEG' : droppedFull ? ', without the full-size JPEG, to fit GitHub Pages' : ''}`],
+    ...(site.notes ? [['Notes', notesRow(site)]] : []),
     ['IIIF manifest', manifestId],
+    ['Settings', `[Change them with the settings helper](${pageUrl}settings.html)`],
   ];
   return [
     '## Your picture is on its way',

@@ -16,7 +16,28 @@ test('an empty config gets defaults; the title is left to the picture to name', 
   assert.deepEqual(c.publish, { full: true, original: true });
   assert.deepEqual(c.colours, {});
   assert.deepEqual(c.metadata, []);
+  assert.equal(c.creator, undefined);
+  assert.equal(c.date, undefined);
+  assert.equal(c.dimensions, undefined);
 });
+
+test('who made it, when, and how big the original is', () => {
+  const c = parseConfig('creator = "J. M. W. Turner"\ndate = { en = "about 1890", cy = "tua 1890" }\ndimensions = "120 x 80,5 cm"', opts);
+  assert.deepEqual(c.creator, { en: 'J. M. W. Turner' });
+  assert.deepEqual(c.date, { en: 'about 1890', cy: 'tua 1890' });
+  assert.deepEqual(c.dimensions, { width: 120, height: 80.5, unit: 'cm', text: '120 × 80.5 cm' });
+});
+
+const dimensions = [
+  ['47.5 × 31.25 in', { width: 47.5, height: 31.25, unit: 'in', text: '47.5 × 31.25 in' }],
+  ['420mm x 297mm', { width: 420, height: 297, unit: 'mm', text: '420 × 297 mm' }],
+  ['1.2 X 0.8 m', { width: 1.2, height: 0.8, unit: 'm', text: '1.2 × 0.8 m' }],
+];
+for (const [given, read] of dimensions) {
+  test(`reads the dimensions ${given}`, () => {
+    assert.deepEqual(parseConfig(`dimensions = "${given}"`, opts).dimensions, read);
+  });
+}
 
 test('reads every documented field', () => {
   const c = parseConfig(
@@ -186,6 +207,11 @@ const mistakes = [
   ['[colours]\npaper = "red; } body { display: none"', /"colours\.paper" must be a CSS colour/],
   ['[colours]\npaper = "#12345"', /"colours\.paper" must be a CSS colour/],
   ['[colours]\npaper = 0xffffff', /"colours\.paper" must be a CSS colour, .* \(got 16777215\)/],
+  ['dimensions = "120 cm"', /"dimensions" must be the width and height of the original, such as "120 × 80 cm", in mm, cm, m or in \(got "120 cm"\)/],
+  ['dimensions = "120 x 80 feet"', /"dimensions" must be the width and height of the original/],
+  ['dimensions = "0 x 80 cm"', /"dimensions" must be the width and height of the original/],
+  ['dimensions = 120', /"dimensions" must be the width and height of the original, .* \(got 120\)/],
+  ['creator = 3', /"creator" must be text in double quotes/],
 ];
 
 for (const [toml, says] of mistakes) {
@@ -193,3 +219,15 @@ for (const [toml, says] of mistakes) {
     assert.throws(() => parseConfig(toml, opts), says);
   });
 }
+
+test('settings are read in browsers without URL.parse (Safari before 18), where the settings helper reads them too', () => {
+  const { parse } = URL;
+  delete URL.parse;
+  try {
+    const settings = parseConfig('rights = "https://creativecommons.org/licenses/by/4.0/"\npicture = "https://example.org/a.tif"\nbase_url = "https://example.org/"');
+    assert.deepEqual([settings.rights, settings.picture, settings.base_url], ['http://creativecommons.org/licenses/by/4.0/', 'https://example.org/a.tif', 'https://example.org']);
+    assert.throws(() => parseConfig('rights = "not a link"'), /"rights" must be a Creative Commons or RightsStatements\.org URL/);
+  } finally {
+    URL.parse = parse;
+  }
+});

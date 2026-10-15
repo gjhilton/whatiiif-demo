@@ -1,4 +1,4 @@
-// whatiiif on real GitHub, the way someone new to it might go about it, in a public repository made from the
+// WhatIIIF on real GitHub, the way someone new to it might go about it, in a public repository made from the
 // template with "Use this template" and holding this commit of the template, so a change can be tried here before
 // it is merged. Run by hand with `npm run test:live` (see trial.js).
 import { test, before, after } from 'node:test';

@@ -22,6 +22,32 @@ a { color: var(--ink); text-underline-offset: 0.15em; }
 .viewer-controls button { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0; border: 0; background: var(--paper); color: var(--ink); cursor: pointer; }
 .viewer-controls button + button { border-left: 1px solid var(--ink); }
 .viewer-controls button:active { background: var(--ink); color: var(--paper); }
+/* The part of the picture a link asked for, outlined for a moment: a line in ink between two of paper, which shows
+   on any picture. Without motion, it stays as long, then goes. */
+.region-outline { border: 2px solid var(--ink); box-shadow: 0 0 0 2px var(--paper), inset 0 0 0 2px var(--paper); pointer-events: none; animation: region-outline 4s ease-in forwards; }
+@keyframes region-outline { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .region-outline { animation-duration: 1ms; animation-delay: 4s; } }
+/* Notes on the picture, an optional extra: a numbered marker at the corner of each one's part of the picture, the
+   list of them under the description, and the tour, below the picture it moves around. */
+.note-marker { display: grid; place-items: center; min-width: 1.75rem; height: 1.75rem; padding: 0 0.35rem; border: 2px solid var(--paper); background: var(--ink); color: var(--paper); font: 700 0.85rem/1 system-ui, sans-serif; cursor: pointer; }
+.notes { margin-bottom: 1.5rem; }
+.notes-heading { display: flex; gap: 1rem; align-items: baseline; justify-content: space-between; }
+.notes ol { margin: 0; padding-left: 1.5rem; }
+.notes li { margin-bottom: 1rem; }
+.notes h3 { margin: 0 0 0.25rem; font: 700 1rem/1.3 system-ui, sans-serif; }
+.notes h3 .link { font-weight: 700; }
+.notes li[aria-current] h3 .link { text-decoration-thickness: 3px; } /* the note on screen */
+.notes .prose { margin-bottom: 0; }
+.notes-heading button, .tour-buttons button { padding: 0.35rem 0.8rem; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.tour-buttons button:disabled { opacity: 0.4; cursor: default; }
+.tour-buttons button.quiet { border-color: transparent; font-weight: 400; text-decoration: underline; text-underline-offset: 0.15em; }
+.tour { max-width: 72rem; margin: 0 auto; padding: 1rem 16px; border-bottom: 1px solid var(--ink); }
+.tour h2 { margin: 0 0 0.5rem; font: 700 1.2rem/1.3 Georgia, serif; }
+.tour-step { margin: 0 0 0.25rem; font-size: 0.85rem; }
+.tour .prose { max-width: 42rem; }
+.tour-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+/* A bracket as long as a round length of the original, its length written in it. */
+.scale-bar { box-sizing: content-box; margin: 0 0 8px 8px; padding: 0.1rem 0 0.2rem; border: 2px solid var(--ink); border-top: 0; background: color-mix(in srgb, var(--paper) 80%, transparent); color: var(--ink); font: 600 0.75rem/1.2 system-ui, sans-serif; text-align: center; white-space: nowrap; }
 /* What OpenSeadragon says, inside someone else's page, when a scroll or a drag is left to that page. */
 .openseadragon-cooperative-overlay { background: color-mix(in srgb, var(--paper) 85%, transparent) !important; color: var(--ink) !important; font-weight: 600; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
@@ -55,3 +81,43 @@ a { color: var(--ink); text-underline-offset: 0.15em; }
 .copy-row button { border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); padding: 0 0.8rem; font: inherit; font-weight: 600; cursor: pointer; }
 .copy-row button:active { background: var(--ink); color: var(--paper); }
 .links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.75rem 0 0; font-size: 0.9rem; }
+.links button.link, .notes button.link { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; text-underline-offset: 0.15em; cursor: pointer; text-align: left; }
+.problem { color: var(--error); font-weight: 600; }
+
+/* The settings helper (settings.html): the form beside the file it writes, which stays in view on a wide screen. */
+.settings-columns { display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr); max-width: 72rem; margin: 0 auto; padding: 1.5rem 16px 4rem; }
+@media (min-width: 52rem) {
+  .settings-columns { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .settings-file { position: sticky; top: 1rem; align-self: start; }
+}
+.settings h2 { font: 700 1rem/1.3 system-ui, sans-serif; margin: 0 0 0.75rem; }
+.settings-form section { margin-bottom: 2rem; padding-top: 1rem; border-top: 1px solid var(--ink); }
+.settings .field { display: grid; gap: 0.3rem; margin-bottom: 1.1rem; }
+.settings .field-label, .settings legend { font-weight: 600; }
+.settings .hint { font-size: 0.85rem; }
+.settings input, .settings select, .settings textarea { min-width: 0; padding: 0.4rem 0.5rem; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; }
+.settings button { justify-self: start; padding: 0.35rem 0.8rem; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.settings button:active { background: var(--ink); color: var(--paper); }
+.settings button.quiet { padding-inline: 0; border-color: transparent; font-weight: 400; text-decoration: underline; text-underline-offset: 0.15em; }
+.settings .translation { display: grid; grid-template-columns: 5rem minmax(0, 1fr) auto; gap: 0.4rem; align-items: start; }
+.settings fieldset { margin: 0 0 1rem; padding: 0.75rem; border: 1px solid var(--ink); }
+.settings .check { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.6rem; }
+.settings .colour { display: flex; gap: 0.5rem; }
+.settings .colour input { flex: 1; }
+.settings .swatch { width: 2.25rem; border: 1px solid var(--ink); }
+.settings details summary { margin-bottom: 0.75rem; font-weight: 600; cursor: pointer; }
+.settings-file textarea { width: 100%; margin-bottom: 0.5rem; font: 0.8rem/1.45 ui-monospace, monospace; }
+.settings-file ol { padding-left: 1.25rem; }
+
+/* On paper: the title, the view as it was on screen, the details, and the citation; black on white, whatever the
+   screen's colours, since browsers leave backgrounds out of print. */
+.print-only, .print-view { display: none; }
+@media print {
+  html:root:root { color-scheme: light; --paper: #ffffff; --ink: #000000; --viewer: #ffffff; }
+  .controls, .viewer-host, .viewer-error, .details .uses, .tour, .notes-heading button { display: none; }
+  .print-only, .print-view { display: block; }
+  .viewer { height: auto; border-block-width: 1px; }
+  .print-view { width: 100%; height: auto; }
+  .details { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .content { padding-block: 1rem 0; }
+}

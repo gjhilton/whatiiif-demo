@@ -1,0 +1,28 @@
+# whatiiif: template only. Copies call publish.yml and offer-update.yml at the v0 tag; publishing a release moves
+# that tag to it, so every copy runs the released steps from then on.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  move-tag:
+    # A pre-release is for trying out: copies keep running the last full release.
+    if: github.event.repository.is_template && !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Point the v0 tag (vMAJOR) at this release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          major=${TAG%%.*}
+          git tag -f "$major" "$TAG"
+          if ! git push -f origin "refs/tags/$major"; then
+            echo "::error title=$major still points at the previous release::Copies run the steps at $major, so move it by hand: git fetch --tags && git tag -f $major $TAG && git push -f origin refs/tags/$major"
+            exit 1
+          fi

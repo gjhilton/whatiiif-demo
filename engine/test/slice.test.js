@@ -122,3 +122,14 @@ test('publishes none of the EXIF a camera wrote, such as where the photo was tak
     assert.equal((await inspect(join(out, path))).exif, false, path);
   }
 });
+
+for (const kind of ['webp', 'avif', 'gif']) {
+  test(`slices a ${kind.toUpperCase()} picture, as the web makes them, into ordinary JPEG tiles`, async () => {
+    const out = await outDir();
+    const info = await slice({ source: await makeVariant(kind, 700, 500), outDir: out, id: ID, tileSize: 256 });
+    assert.deepEqual([info.width, info.height], [700, 500]);
+    assert.deepEqual(await missingFiles(out), []);
+    const { space, channels } = await inspect(join(out, 'full/max/0/default.jpg'));
+    assert.deepEqual({ space, channels }, { space: 'srgb', channels: 3 });
+  });
+}

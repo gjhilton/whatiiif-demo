@@ -1,0 +1,62 @@
+# whatiiif: template only. Copies of the template call this from their Deploy workflow (deploy.yml), at the v0 tag,
+# so it can improve without anyone copying it. It runs the copy's own engine/, at paths that must stay put.
+name: Publish
+
+on:
+  workflow_call:
+    secrets:
+      PAGES_ENABLE_TOKEN:
+        required: false
+
+jobs:
+  content:
+    # A fresh copy of the template has no image yet: say so and stop, rather than fail.
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.look.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: look
+        run: node engine/ci/has-image.js
+
+  deploy:
+    needs: content
+    if: needs.content.outputs.image == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60 # a stuck run stops here, not after GitHub's six hours
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true # the source image is stored in Git LFS
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - id: pages
+        uses: actions/configure-pages@v6
+        with:
+          # Optional: add a PAT as the PAGES_ENABLE_TOKEN secret to have Pages switched on for you.
+          token: ${{ secrets.PAGES_ENABLE_TOKEN || github.token }}
+          enablement: ${{ secrets.PAGES_ENABLE_TOKEN != '' }}
+      - name: Explain Pages setup if it failed
+        if: failure() && steps.pages.outcome == 'failure'
+        run: echo "::error::GitHub Pages is not enabled. Go to Settings > Pages and set Source to 'GitHub Actions', then re-run this workflow."
+      - name: Build
+        run: engine/ci/build.sh
+        env:
+          SITE_BASE_URL: ${{ steps.pages.outputs.base_url }}
+      # Named for the attempt: a re-run of this job uploads the site again, and two uploads of the same name stop
+      # deploy-pages.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+          name: github-pages-${{ github.run_attempt }}
+      - id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+          # No `timeout`: its default, 10 minutes, is also the most deploy-pages allows, and asking for more only puts
+          # a warning on every run.

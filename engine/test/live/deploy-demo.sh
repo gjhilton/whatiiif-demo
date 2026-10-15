@@ -17,13 +17,16 @@ git "${nolfs[@]}" clone -q "git@github.com:$demo.git" "$work"
 # Everything but content/ is replaced by this commit's, as "Use this template" would give it today.
 git -C "$work" rm -q -r -- . ':!content'
 git archive HEAD -- $(git ls-tree --name-only HEAD | grep -vx content) | tar -x -C "$work"
+# Its workflows call the template's steps at the v0 tag, the last release: here they call this commit's instead.
+sed -i.orig -E "s#(uses: [^ ]+/\.github/workflows/[^@ ]+)@v0\$#\1@$sha#" "$work"/.github/workflows/*.yml
+rm "$work"/.github/workflows/*.orig
 git -C "$work" "${nolfs[@]}" add -A
 
 if git -C "$work" diff --cached --quiet; then
   echo "$demo already holds this template."
 else
   deploys=$(git -C "$work" diff --cached --name-only -- engine package.json package-lock.json .github/workflows/deploy.yml)
-  git -C "$work" -c user.name="whatiiif live test" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+  git -C "$work" -c user.name="WhatIIIF live test" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     commit -q -m "Template at $sha"
   git -C "$work" "${nolfs[@]}" push -q origin HEAD
   pushed=$(git -C "$work" rev-parse HEAD)

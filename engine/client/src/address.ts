@@ -19,14 +19,19 @@ export interface Asked {
   embed: boolean;
 }
 
-/** The part of `region` inside the image, in whole pixels; undefined when that is nothing, or all of it. */
+/**
+ * The part of `region` inside the image, in whole pixels; undefined when that is nothing, or all of it. A viewer
+ * showing the whole picture can report it a fraction of a pixel short at an edge, so within half a percent of
+ * every edge counts as all of it.
+ */
 export function withinImage(region: Region, site: Site): Region | undefined {
   const x = Math.max(0, Math.round(region.x));
   const y = Math.max(0, Math.round(region.y));
   const w = Math.min(site.width, Math.round(region.x + region.w)) - x;
   const h = Math.min(site.height, Math.round(region.y + region.h)) - y;
   if (w < 1 || h < 1) return undefined;
-  if (x === 0 && y === 0 && w === site.width && h === site.height) return undefined; // the whole image needs no link
+  const [slackX, slackY] = [Math.max(1, site.width * 0.005), Math.max(1, site.height * 0.005)];
+  if (x <= slackX && y <= slackY && x + w >= site.width - slackX && y + h >= site.height - slackY) return undefined; // the whole image needs no link
   return { x, y, w, h };
 }
 

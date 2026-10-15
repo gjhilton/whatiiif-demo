@@ -19,6 +19,10 @@ const variants = {
   cmyk: ['tif', (image) => image.toColourspace('cmyk')],
   grey: ['tif', (image) => image.toColourspace('b-w')],
   rgba: ['png', (image) => image.ensureAlpha(0.5)],
+  // Formats the web uses: WebP, AVIF, and GIF (a palette of 256 colours).
+  webp: ['webp', (image) => image.webp()],
+  avif: ['avif', (image) => image.avif()],
+  gif: ['gif', (image) => image.gif()],
 };
 
 export async function makeVariant(kind, width = 700, height = 500) {

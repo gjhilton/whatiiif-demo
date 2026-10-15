@@ -1,0 +1,73 @@
+# whatiiif: template only. Once a week: updates every package to the newest version its range in package.json
+# allows, checks the template still passes its tests, and offers the change as one pull request, listing any newer
+# major versions, which need a person. (A dependabot.yml would be copied into every site made from the template,
+# and open pull requests there for packages its Update workflow looks after; security fixes come from Dependabot's
+# security updates, a setting of this repository alone.)
+name: Dependencies
+
+on:
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    if: github.event.repository.is_template
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.node-version
+          cache: npm
+      - run: npm ci
+      - name: Update every package within its range
+        id: update
+        run: |
+          npm ls --depth=0 --json > "$RUNNER_TEMP/before.json" || true
+          npm update
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "Every package is already the newest its range allows."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check the template with them
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          npm run typecheck
+          npm test
+          npx playwright install --with-deps chromium-headless-shell webkit
+          npm run test:e2e
+      - name: Offer them as a pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm ls --depth=0 --json > "$RUNNER_TEMP/after.json" || true
+          changed=$(node -e '
+            const read = (file) => { try { return JSON.parse(require("fs").readFileSync(file, "utf8")).dependencies ?? {}; } catch { return {}; } };
+            const [before, after] = process.argv.slice(1).map(read);
+            for (const [name, { version }] of Object.entries(after)) {
+              if (before[name]?.version !== version) console.log(`- ${name} ${before[name]?.version ?? "(new)"} → ${version}`);
+            }' "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json")
+          majors=$(npm outdated || true)
+          body="Every package updated to the newest version its range in package.json allows, with the packages they use:"$'\n\n'"$changed"
+          body+=$'\n\n'"Typecheck, unit tests and browser journeys passed with them. GitHub starts no CI for a pull request a workflow opens: close and reopen this one to run all of CI, the screenshot tests included."
+          if [[ -n "$majors" ]]; then
+            body+=$'\n\n'"Newer versions outside the ranges, which need a person:"$'\n\n```\n'"$majors"$'\n```'
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B dependencies
+          git commit -qam "Update every package within its range"
+          git push -f origin dependencies
+          if [[ -n "$(gh pr list --head dependencies --state open --json number --jq '.[0].number')" ]]; then
+            gh pr edit dependencies --body "$body"
+          else
+            gh pr create --title "Update dependencies" --body "$body" --head dependencies
+          fi

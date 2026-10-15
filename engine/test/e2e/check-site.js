@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { expectedRequests } from '../../lib/service.js';
 import { schemaProblems, schemaUnavailable } from '../support/schema.js';
-import { browse, zoomToFullResolution } from '../support/harness.js';
+import { browse, until, zoomToFullResolution } from '../support/harness.js';
 
 const siteUrl = process.env.E2E_SITE_URL?.replace(/\/+$/, '');
 const dist = process.env.E2E_DIST;
@@ -60,11 +60,46 @@ for (const [viewer, label] of [['openseadragon', 'OpenSeadragon'], ['mirador', '
   });
 }
 
+test('notes, where a site has them, are numbered on the picture and listed, and the tour takes the viewer to each', async (t) => {
+  const { notes, width, height } = await json('site.json');
+  if (!notes) return t.skip('this site has no notes');
+  const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: '?viewer=openseadragon' });
+  const count = notes.items.length;
+  await until(async () => (await page.locator('.note-marker').count()) === count, `${count} markers on the picture`);
+  assert.equal(await page.locator('.notes li').count(), count, 'as many notes listed');
+  // The part of the picture in view, as the address gives it: none given is the whole picture.
+  const shows = ({ x, y, w, h }) => async () => {
+    const [vx, vy, vw, vh] = new URL(page.url()).hash.match(/^#xywh=(\d+),(\d+),(\d+),(\d+)$/)?.slice(1).map(Number) ?? [0, 0, width, height];
+    return vx <= x + 2 && vy <= y + 2 && vx + vw >= x + w - 2 && vy + vh >= y + h - 2;
+  };
+  await page.getByRole('button', { name: 'Take the tour' }).click();
+  const tour = page.getByRole('region', { name: 'Tour' });
+  for (const [i, { region }] of notes.items.entries()) {
+    assert.equal(await tour.locator('.tour-step').textContent(), `Note ${i + 1} of ${count}`);
+    await until(shows(region), `the viewer to show note ${i + 1}`);
+    await tour.getByRole('button', { name: i === count - 1 ? 'End the tour' : 'Next' }).first().click();
+  }
+  assert.equal(await tour.count(), 0, 'the tour has ended');
+  assert.deepEqual(problems, []);
+  await close();
+});
+
 test('a shared link shows a picture that is published', async () => {
   const html = dist ? await readFile(join(dist, 'index.html'), 'utf8') : await (await fetch(`${siteUrl}/`)).text();
   const picture = html.match(/<meta property="og:image" content="([^"]+)">/)?.[1];
   assert.ok(picture?.startsWith(`${siteUrl}/`), `og:image is ${picture}`);
   assert.equal(await published(picture.slice(siteUrl.length + 1)), true);
+  assert.equal(await published('icon.png'), true, 'the icon browsers show for the page');
+});
+
+test('the settings helper opens with the site\'s settings, ready to copy', async () => {
+  const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: 'settings.html' });
+  const file = page.getByRole('textbox', { name: 'whatiiif.toml' });
+  await file.waitFor();
+  assert.match(await file.inputValue(), /^# Made with the settings helper/);
+  assert.equal(await page.getByRole('alert').count(), 0, 'the settings as they are have nothing wrong with them');
+  assert.deepEqual(problems, []);
+  await close();
 });
 
 test('without JavaScript the page shows the picture, with alt text', async () => {

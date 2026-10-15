@@ -55,12 +55,15 @@ base=$(git rev-parse --abbrev-ref HEAD) # the branch to update, as checked out; 
 body="Updates the engine, preview page and tooling from **$UPSTREAM** $current → $latest. Your \`content/\` is untouched."
 
 # GitHub does not let a workflow change workflow files, so each one that changed upstream is listed, with links, for
-# the repository's owner to copy by hand. ci.yml and live.yml run only in the template itself, so they never need it.
+# the repository's owner to copy by hand. Those whose first line says "whatiiif: template only" run only in the
+# template, or are called from it by copies, so they never need copying (nor, from before there was a marker, do
+# ci.yml and live.yml).
 copies=()
 shopt -s nullglob
 for file in "$work/src/.github/workflows/"*.yml "$work/src/.github/workflows/"*.yaml; do
   name=$(basename "$file")
   [[ "$name" == ci.yml || "$name" == live.yml ]] && continue
+  head -1 "$file" | grep -q '^# whatiiif: template only' && continue
   copy="open [the new version]($theirs/blob/$tag/.github/workflows/$name), copy all of it, and paste it"
   if [[ ! -f ".github/workflows/$name" ]]; then
     copies+=("- \`$name\` (new): $copy into [a new file]($mine/new/$base?filename=.github/workflows/$name).")
@@ -79,7 +82,7 @@ git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git checkout -b "$branch"
 git add -A engine package.json package-lock.json
-git commit -m "Update whatiiif engine to $latest"
+git commit -m "Update WhatIIIF engine to $latest"
 git push --force origin "$branch"
 
 # Pull requests from earlier runs: one for this release is brought up to date; older updates are replaced, since
@@ -90,7 +93,7 @@ if [[ -n "$same" ]]; then
   gh pr edit "$same" --body "$body"
   exit 0
 fi
-if ! url=$(gh pr create --title "Update whatiiif to $latest" --body "$body" --base "$base" --head "$branch" 2> "$errors"); then
+if ! url=$(gh pr create --title "Update WhatIIIF to $latest" --body "$body" --base "$base" --head "$branch" 2> "$errors"); then
   if grep -q 'not permitted to create or approve pull requests' "$errors"; then
     echo "::error title=Update $latest is ready but could not be offered::This repository does not let workflows open pull requests. Turn on Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests, then run the Update workflow again; or open the pull request yourself: $mine/compare/$base...$branch?expand=1"
   fi

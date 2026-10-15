@@ -10,5 +10,5 @@ const settings = await readFile('content/whatiiif.toml', 'utf8').catch(() => '')
 const linked = /^\s*picture\s*=/m.test(settings);
 const image = images.length + unsupported.length > 0 || linked;
 
-if (!image) console.log('::notice::No image in content/ yet. Commit one TIFF, PNG or JPEG there and it will be published.');
+if (!image) console.log('::notice::No image in content/ yet. Commit one picture there (TIFF, PNG, JPEG, WebP, AVIF or GIF) and it will be published.');
 if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `image=${image}\n`);

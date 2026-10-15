@@ -7,7 +7,9 @@ import { access, copyFile, readFile, readdir, rm, writeFile } from 'node:fs/prom
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
 import { missingFiles } from '../../lib/service.js';
+import { parseConfig } from '../../lib/config.js';
 import { inspect, makeImage, makePhonePhoto, makeVariant } from '../support/fixtures.js';
 import { schemaProblems, schemaUnavailable } from '../support/schema.js';
 import { browse, commit, deploy, git, run, templateCopy, until, zoomToFullResolution } from '../support/harness.js';
@@ -26,7 +28,7 @@ const open = (site, query, options) => browse(browser, { siteUrl: site.baseUrl, 
 test('a fresh copy of the template has nothing to publish yet, and says so instead of failing', async () => {
   const site = await deploy(await templateCopy());
   assert.equal(site.skipped, true);
-  assert.match(site.log, /::notice::No image in content\/ yet/);
+  assert.match(site.log, /::notice::No image in content\/ yet\. Commit one picture there \(TIFF, PNG, JPEG, WebP, AVIF or GIF\)/);
 });
 
 suite('a photographer uploads a phone photo on github.com and fills in every setting', () => {
@@ -43,10 +45,9 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
         'attribution = "Example Museum"',
         'alt = "Fishing boats coming into the harbour at dusk"',
         'rights = "https://creativecommons.org/licenses/by/4.0/deed.en"', // as copied from the licence's page
-        '',
-        '[[metadata]]',
-        'label = "Date"',
-        'value = "1890"',
+        'creator = "A. Photographer"',
+        'date = "1890"',
+        'dimensions = "30 x 40 cm"',
         '',
         '[[metadata]]',
         'label = "Source"',
@@ -83,7 +84,9 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.deepEqual(manifest.requiredStatement.value, { en: ['Example Museum'] });
     assert.equal(manifest.rights, 'http://creativecommons.org/licenses/by/4.0/');
     assert.deepEqual(manifest.metadata, [
+      { label: { en: ['Creator'] }, value: { en: ['A. Photographer'] } },
       { label: { en: ['Date'] }, value: { en: ['1890'] } },
+      { label: { en: ['Dimensions'] }, value: { none: ['30 × 40 cm'] } },
       { label: { en: ['Source'] }, value: { en: ['https://archives.example.org/collections/harbour-views/1890/plate-17'] } },
     ]);
     assert.deepEqual([manifest.items[0].width, manifest.items[0].height], [1200, 1600]);
@@ -105,9 +108,10 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.equal(await page.locator('.prose em').textContent(), 'north');
     const rows = await page.locator('.meta tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((cell) => cell.textContent)));
     assert.deepEqual(rows, [
+      ['Creator', 'A. Photographer'],
       ['Date', '1890'],
       ['Source', 'https://archives.example.org/collections/harbour-views/1890/plate-17'],
-      ['Dimensions', '1,200 × 1,600 px'],
+      ['Dimensions', '30 × 40 cm (1,200 × 1,600 px)'],
       ['Attribution', 'Example Museum'],
       ['Rights', 'CC BY 4.0'],
     ]);
@@ -126,13 +130,19 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     await close();
   });
 
-  test('the links to share the view, and the manifest and image service addresses, are shown and can be copied', async () => {
+  const citationToday = (link) => {
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `A. Photographer (1890) Harbour at dusk. Example Museum. Available at: ${link} (Accessed: ${today}).`;
+  };
+
+  test('the links to share and cite the view, and the manifest and image service addresses, are shown and can be copied', async () => {
     const { page, close } = await open(site);
     const fields = page.locator('.copy-field');
     await fields.first().waitFor();
     assert.deepEqual(await fields.locator('input').evaluateAll((inputs) => inputs.map((input) => input.value)), [
       'https://gjh.github.io/harbour/?viewer=openseadragon', // the link to this view: the whole picture, so no fragment
       '<iframe src="https://gjh.github.io/harbour/?embed&amp;viewer=openseadragon" width="800" height="1067" style="border:0;width:100%;max-width:800px;height:auto;aspect-ratio:800/1067" allowfullscreen loading="lazy" title="Harbour at dusk"></iframe>',
+      citationToday('https://gjh.github.io/harbour/?viewer=openseadragon'),
       'https://gjh.github.io/harbour/iiif/manifest.json',
       'https://gjh.github.io/harbour/iiif/image/info.json',
     ]);
@@ -161,9 +171,8 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.equal(meta('og:description'), 'The fishing fleet coming in.');
     assert.equal(meta('og:url'), 'https://gjh.github.io/harbour/');
     assert.equal(meta('og:image:alt'), 'Fishing boats coming into the harbour at dusk');
-    const picture = meta('og:image');
-    assert.ok(picture.startsWith('https://gjh.github.io/harbour/iiif/image/full/'), picture);
-    assert.equal(await exists(join(site.dist, picture.slice('https://gjh.github.io/harbour/'.length))), true);
+    assert.equal(meta('og:image'), 'https://gjh.github.io/harbour/card.jpg');
+    assert.equal(await exists(join(site.dist, 'card.jpg')), true);
   });
 
   test('without JavaScript the page still shows the picture, described, with its links', async () => {
@@ -286,6 +295,75 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     await until(() => new URL(page.url()).hash.startsWith('#xywh='), 'the closer view to reach the address');
     await controls.getByRole('button', { name: 'Show the whole picture' }).click();
     await until(() => new URL(page.url()).hash === '', 'the whole picture, which needs no fragment');
+    await close();
+  });
+
+  test('a scale bar measures the picture against its real size, and keeps to round lengths as the visitor zooms', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon');
+    const bar = page.locator('.scale-bar');
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    // The whole 30 cm width, 1,200 pixels, fits a pane 648 pixels high at 4:3, about 486 pixels across: 1 cm is about 16.
+    await until(async () => (await bar.textContent()) === '5 cm', 'the scale bar to say 5 cm');
+    const width = (await bar.boundingBox()).width;
+    assert.ok(width > 70 && width < 90, `5 cm is ${width} pixels across, borders and all`);
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await until(async () => ['1 cm', '2 cm'].includes(await bar.textContent()), 'a shorter length closer up');
+    await close();
+  });
+
+  test('printed, the page shows the view as it was on screen, the details and the citation, black on white', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon#xywh=200,300,400,500', { colorScheme: 'dark' });
+    await page.locator('.openseadragon-container').first().waitFor();
+    await until(() => !page.url().endsWith('#xywh=200,300,400,500'), 'the viewer to report its view, which the citation links to');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
+    await page.emulateMedia({ media: 'print' });
+    const view = page.locator('.print-view');
+    assert.equal(await view.isVisible(), true);
+    assert.equal(await view.evaluate((img) => img.naturalWidth > 0 && img.src.startsWith('data:image/png')), true, 'a still of the view');
+    assert.equal(await page.locator('.details .uses').isVisible(), false, 'no copy fields on paper');
+    assert.equal(await page.locator('.print-only p').textContent(), citationToday(page.url()));
+    assert.deepEqual(await page.evaluate(() => [getComputedStyle(document.body).backgroundColor, getComputedStyle(document.body).color]), ['rgb(255, 255, 255)', 'rgb(0, 0, 0)']);
+    await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => dispatchEvent(new Event('afterprint')));
+    assert.equal(await view.count(), 0, 'gone again after printing');
+    await close();
+  });
+
+  test('the settings helper starts from the settings as they are, and writes a file the build accepts, saying what is wrong when it is not', async () => {
+    const { page, problems, close } = await open(site, 'settings.html');
+    const file = page.getByRole('textbox', { name: 'whatiiif.toml' });
+    await file.waitFor();
+    assert.equal(await page.title(), 'Settings: Harbour at dusk');
+    assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Harbour at dusk');
+
+    const translate = page.getByRole('button', { name: 'Add a translation' });
+    assert.equal(await translate.count(), 0, 'a site in one language is not offered translations');
+    await page.getByRole('checkbox', { name: 'Give texts in other languages too' }).check();
+    assert.ok((await translate.count()) > 0, 'until it asks');
+
+    await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Harbour at night');
+    const { settings } = await json(join(site.dist, 'settings.json'));
+    const asJson = (value) => JSON.parse(JSON.stringify(value)); // as settings.json has them, unset settings left out
+    assert.deepEqual(asJson(parseConfig(await file.inputValue())), { ...settings, title: { en: 'Harbour at night' } }, 'everything else as it was');
+
+    // Saying the texts are in Welsh takes them with it, rather than leaving them as English to translate.
+    await page.getByRole('textbox', { name: 'Language of your texts' }).fill('cy');
+    assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Harbour at night');
+    assert.match(await file.inputValue(), /^language = "cy"\ntitle = "Harbour at night"$/m);
+    await page.getByRole('textbox', { name: 'Language of your texts' }).fill('en');
+
+    const size = page.getByRole('textbox', { name: 'Real size' });
+    await size.fill('big');
+    assert.match(await page.getByRole('alert').textContent(), /"dimensions" must be the width and height of the original/);
+    await size.fill('30 × 40 cm');
+    assert.equal(await page.getByRole('alert').count(), 0);
+
+    await page.getByRole('button', { name: 'Copy' }).click();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await file.inputValue());
+    assert.equal(await page.getByRole('link', { name: 'Open whatiiif.toml on GitHub' }).getAttribute('href'), 'https://github.com/gjh/harbour/edit/main/content/whatiiif.toml');
+    assert.deepEqual(problems, []);
     await close();
   });
 
@@ -452,6 +530,33 @@ suite('a visitor shares the part of the picture they have zoomed into', () => {
     });
   }
 
+  test('a link to a region outlines that region for a moment, so whoever opens it sees what was meant', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon#xywh=2000,1500,500,400');
+    const outline = page.locator('.region-outline');
+    await outline.waitFor();
+    await page.waitForLoadState('networkidle');
+    const box = await outline.boundingBox();
+    const pane = await page.locator('.viewer').boundingBox();
+    assert.ok(Math.abs(box.width / box.height - 500 / 400) < 0.05, `outlined in the region's shape (${box.width}x${box.height})`);
+    assert.ok(box.x > pane.x && box.x + box.width < pane.x + pane.width, 'within the pane, as the region is narrower than it');
+    await outline.waitFor({ state: 'detached', timeout: 10_000 });
+    await close();
+  });
+
+  test('the view on screen can be saved as a picture, made from the published tiles', async () => {
+    const { page, fetched, close } = await open(site, '?viewer=openseadragon#xywh=2000,1500,500,400');
+    await until(() => fetched.includes(tile(2048, 1536)), 'the view to open');
+    // The address names the part asked for until the viewer reports the view it opened on, the pane's shape.
+    await until(() => !page.url().endsWith('#xywh=2000,1500,500,400'), 'the viewer to report its view');
+    await page.waitForLoadState('networkidle');
+    const [x, y, w, h] = new URL(page.url()).hash.slice('#xywh='.length).split(',').map(Number);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'This view, as a JPEG' }).click()]);
+    assert.equal(download.suggestedFilename(), `harbour ${x},${y},${w},${h}.jpg`);
+    const { width, height, format } = await sharp(await download.path()).metadata();
+    assert.deepEqual({ width, height, format }, { width: w, height: h, format: 'jpeg' }, 'at full resolution, as it is under 4096 pixels a side');
+    await close();
+  });
+
   test('zooming in puts the view in the address and the link field, and that link opens the same view', async () => {
     const first = await open(site, '?viewer=openseadragon');
     assert.equal(new URL(first.page.url()).hash, '', 'the whole picture needs no fragment');
@@ -493,6 +598,159 @@ suite('a visitor shares the part of the picture they have zoomed into', () => {
     await until(() => /^#xywh=/.test(new URL(page.url()).hash), 'Mirador to report the view it opened on');
     const [x, y, w, h] = new URL(page.url()).hash.slice('#xywh='.length).split(',').map(Number);
     assert.ok(x <= 2002 && y <= 1502 && x + w >= 2498 && y + h >= 1898, `${[x, y, w, h]} holds 2000,1500,500,400`);
+    await close();
+  });
+});
+
+suite('a museum adds notes to its picture, which make a tour', () => {
+  let site;
+  const notes = [
+    ['The lighthouse', '600,300,400,700'],
+    ['The boats', '2400,1800,900,500'],
+    ['A gull', '3300,200,200,150'],
+  ];
+  const holds = (page, [x0, y0, w0, h0]) => {
+    const [x, y, w, h] = (new URL(page.url()).hash.match(/^#xywh=(\d+),(\d+),(\d+),(\d+)$/) ?? []).slice(1).map(Number);
+    return x <= x0 + 2 && y <= y0 + 2 && x + w >= x0 + w0 - 2 && y + h >= y0 + h0 - 2 && w < 4000;
+  };
+  const at = (region) => region.split(',').map(Number);
+
+  before(async () => {
+    const repo = await templateCopy();
+    await copyFile(await makeImage(4000, 3000), join(repo, 'content/harbour.tif'));
+    const text = notes.map(([title, region]) => `## [${title}](https://example.github.io/my-image/?viewer=openseadragon#xywh=${region})\n\nAbout ${title.toLowerCase()}.\n`);
+    await writeFile(join(repo, 'content/notes.md'), `Three things to look for.\n\n${text.join('\n')}`);
+    await commit(repo, 'A picture with notes');
+    site = await deploy(repo);
+    assert.equal(site.built, true, site.log);
+  });
+
+  test('the notes are listed under the picture, numbered as markers on it, and each takes the viewer to its part', async () => {
+    const { page, problems, close } = await open(site, '?viewer=openseadragon');
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    assert.deepEqual(await page.locator('.notes li h3').allTextContents(), notes.map(([title]) => title));
+    const markers = page.getByRole('button', { name: /^Note \d$/ });
+    assert.equal(await markers.count(), 3);
+
+    await page.getByRole('button', { name: 'Note 2' }).click();
+    await until(() => holds(page, at(notes[1][1])), 'the viewer to show the boats');
+    assert.equal(await page.locator('.notes li[aria-current]').locator('h3').textContent(), 'The boats');
+
+    await page.getByRole('button', { name: 'A gull' }).click();
+    await until(() => holds(page, at(notes[2][1])), 'the viewer to show the gull');
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('the tour goes through the notes in order, moving the viewer, and ends when asked', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon');
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Take the tour' }).click();
+    const tour = page.getByRole('region', { name: 'Tour' });
+    assert.equal(await tour.locator('.tour-step').textContent(), 'Note 1 of 3');
+    assert.equal(await tour.locator('h2').textContent(), 'The lighthouse');
+    assert.equal(await tour.getByRole('button', { name: 'Back' }).isDisabled(), true);
+    await until(() => holds(page, at(notes[0][1])), 'the viewer to show the lighthouse');
+
+    await tour.getByRole('button', { name: 'Next' }).click();
+    assert.equal(await tour.locator('h2').textContent(), 'The boats');
+    await until(() => holds(page, at(notes[1][1])), 'the viewer to show the boats');
+    await tour.getByRole('button', { name: 'Next' }).click();
+    assert.equal(await tour.locator('.tour-step').textContent(), 'Note 3 of 3');
+    await tour.getByRole('button', { name: 'Back' }).click();
+    assert.equal(await tour.locator('.tour-step').textContent(), 'Note 2 of 3');
+    await tour.getByRole('button', { name: 'Back' }).press('Escape');
+    assert.equal(await tour.count(), 0, 'Escape ends it');
+    await close();
+  });
+
+  test('in Mirador, the notes are in its own list of annotations', async () => {
+    const { page, problems, close } = await open(site, '?viewer=mirador');
+    const mirador = page.locator('.mirador-window');
+    await mirador.getByText('Showing 3 annotations').waitFor();
+    for (const [title] of notes) await mirador.getByText(title, { exact: true }).waitFor();
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('Mirador opens with its list of notes on the page, but not in a small embedded frame', async () => {
+    for (const [query, expanded] of [['?viewer=mirador', 'true'], ['?embed&viewer=mirador', 'false']]) {
+      const { page, problems, close } = await open(site, query);
+      const sidebar = page.locator('.mirador-window-menu-btn');
+      await sidebar.waitFor();
+      assert.equal(await sidebar.getAttribute('aria-expanded'), expanded, query);
+      assert.deepEqual(problems, []);
+      await close();
+    }
+  });
+
+  test('in Mirador, with its list of notes open beside the picture, a link to the view describes what is on screen', async () => {
+    const { page, problems, close } = await open(site, '?viewer=mirador');
+    await page.locator('.mirador-window .openseadragon-container').first().waitFor();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000); // time for Mirador to report the view it opened on
+    assert.equal(new URL(page.url()).hash, '', 'the whole picture, as Mirador opens on it, names no part of it in the address');
+    await page.locator('.notes').getByRole('button', { name: 'The boats' }).click();
+    // The address names the boats themselves at once, then the view Mirador reports once it has got there.
+    await until(() => new URL(page.url()).hash.startsWith('#xywh=') && !page.url().endsWith(`#xywh=${notes[1][1]}`), 'Mirador to report its view');
+    assert.ok(holds(page, at(notes[1][1])), 'the view holds the boats');
+    const [, , w, h] = new URL(page.url()).hash.match(/(\d+),(\d+),(\d+),(\d+)$/).slice(1).map(Number);
+    const screen = await page.locator('.mirador-window .openseadragon-container').first().boundingBox();
+    const shape = w / h / (screen.width / screen.height);
+    assert.ok(Math.abs(shape - 1) < 0.03, `the view is ${w} × ${h}, on a screen ${Math.round(screen.width)} × ${Math.round(screen.height)}`);
+    assert.ok(Math.abs(w / 900 - 1) < 0.02, `the boats, wider than the screen's shape, fill its width (${w} wide)`);
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('in Mirador, with its list of notes open, a link to a part of the picture opens on just that part', async () => {
+    const { page, problems, close } = await open(site, `?viewer=mirador#xywh=${notes[1][1]}`);
+    await until(() => new URL(page.url()).hash.startsWith('#xywh=') && !page.url().endsWith(`#xywh=${notes[1][1]}`), 'Mirador to report its view');
+    assert.ok(holds(page, at(notes[1][1])), 'the view holds the boats');
+    const [, , w] = new URL(page.url()).hash.match(/(\d+),(\d+),(\d+),(\d+)$/).slice(1).map(Number);
+    assert.ok(Math.abs(w / 900 - 1) < 0.02, `the boats fill the width of the picture's part of the window (${w} wide)`);
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('on a narrow screen Mirador leaves its list of notes closed, to leave room for the picture: the page lists them', async () => {
+    const { page, problems, close } = await open(site, '?viewer=mirador', { device: { viewport: { width: 600, height: 900 } } });
+    const sidebar = page.locator('.mirador-window-menu-btn');
+    await sidebar.waitFor();
+    assert.equal(await sidebar.getAttribute('aria-expanded'), 'false');
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('the tour takes keyboard focus when it starts, and gives it back when it ends', async () => {
+    const { page, close } = await open(site, '?viewer=openseadragon');
+    await page.locator('.openseadragon-container').first().waitFor();
+    const start = page.getByRole('button', { name: 'Take the tour' });
+    await start.focus();
+    await page.keyboard.press('Enter');
+    const tour = page.getByRole('region', { name: 'Tour' });
+    await tour.waitFor();
+    assert.equal(await tour.evaluate((element) => element.contains(document.activeElement)), true, 'focus moves into the tour');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Next', 'Back is disabled, so Next is first');
+    await page.keyboard.press('Escape');
+    assert.equal(await tour.count(), 0);
+    assert.equal(await start.evaluate((element) => element === document.activeElement), true, 'focus goes back to Take the tour');
+    await close();
+  });
+
+  test('a picture without notes has no markers, list or tour', async () => {
+    const plain = await deploy(await templateCopy().then(async (repo) => {
+      await copyFile(await makeImage(800, 600), join(repo, 'content/plain.tif'));
+      await commit(repo, 'A picture');
+      return repo;
+    }));
+    const { page, close } = await open(plain, '?viewer=openseadragon');
+    await page.locator('.openseadragon-container').first().waitFor();
+    assert.equal(await page.locator('.notes, .note-marker').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Take the tour' }).count(), 0);
     await close();
   });
 });
@@ -605,8 +863,13 @@ const mistakes = [
   },
   {
     name: 'commits a format that cannot be read yet',
-    files: { 'scan.heic': 'x' },
-    says: /Build failed: scan\.heic is not supported yet\. Convert it to TIFF, PNG or JPEG/,
+    files: { 'scan.jp2': 'x' },
+    says: /Build failed: scan\.jp2 is not supported yet\. Convert it to TIFF, PNG or JPEG and commit that in content\/ instead\./,
+  },
+  {
+    name: 'uploads a photo straight from their iPhone',
+    files: { 'IMG_0001.HEIC': 'x' },
+    says: /Build failed: IMG_0001\.HEIC is an iPhone photo \(HEIC\), which cannot be read here\. Make it a JPEG first/,
   },
   {
     name: 'misspells a setting',

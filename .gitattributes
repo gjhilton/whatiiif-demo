@@ -10,3 +10,9 @@ content/*.jpg  filter=lfs diff=lfs merge=lfs -text
 content/*.JPG  filter=lfs diff=lfs merge=lfs -text
 content/*.jpeg filter=lfs diff=lfs merge=lfs -text
 content/*.JPEG filter=lfs diff=lfs merge=lfs -text
+content/*.webp filter=lfs diff=lfs merge=lfs -text
+content/*.WEBP filter=lfs diff=lfs merge=lfs -text
+content/*.avif filter=lfs diff=lfs merge=lfs -text
+content/*.AVIF filter=lfs diff=lfs merge=lfs -text
+content/*.gif  filter=lfs diff=lfs merge=lfs -text
+content/*.GIF  filter=lfs diff=lfs merge=lfs -text

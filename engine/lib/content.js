@@ -1,5 +1,6 @@
 // content/, which belongs to the site's owner: one picture (or the link to one in whatiiif.toml), the settings in
-// whatiiif.toml, and descriptions in description.md and description.<language>.md.
+// whatiiif.toml, descriptions in description.md and description.<language>.md, and, if its owner wants them, notes
+// on the picture in notes.md and notes.<language>.md.
 import { createWriteStream } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
@@ -7,11 +8,13 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Marked } from 'marked';
 import { LANGUAGE_EXAMPLE, languageCode, parseConfig } from './config.js';
-import { findImage, listImages, sniff } from './source.js';
+import { combineNotes } from './notes.js';
+import { cannotRead, findImage, listImages, sniff } from './source.js';
 import { closest } from './spelling.js';
 
 const DESCRIPTION = /^description(?:\.([^.]+))?\.md$/;
-const KNOWN = ['whatiiif.toml', 'description.md'];
+const NOTES = /^notes(?:\.([^.]+))?\.md$/;
+const KNOWN = ['whatiiif.toml', 'description.md', 'notes.md'];
 
 // The page's title is its one top-level heading, so a description's headings start a level below it.
 const markdown = new Marked({
@@ -20,7 +23,9 @@ const markdown = new Marked({
   },
 });
 
-const readOptional = (path) => readFile(path, 'utf8').catch((error) => (error.code === 'ENOENT' ? undefined : Promise.reject(error)));
+/** A text file, without the byte order mark some Windows editors start one with, which would hide its first heading. */
+const readText = async (path) => (await readFile(path, 'utf8')).replace(/^\uFEFF/, '');
+const readOptional = (path) => readText(path).catch((error) => (error.code === 'ENOENT' ? undefined : Promise.reject(error)));
 
 /** description.md, in the site's language, and description.<language>.md for any other, as HTML. */
 async function descriptions(dir, files, language) {
@@ -32,29 +37,40 @@ async function descriptions(dir, files, language) {
     if (!tag) continue;
     if (from[tag]) throw new Error(`content/${from[tag]} and content/${file} are both in ${tag}; keep one`);
     from[tag] = file;
-    html[tag] = await markdown.parse(await readFile(join(dir, file), 'utf8'));
+    html[tag] = await markdown.parse(await readText(join(dir, file)));
   }
   return Object.keys(html).length ? html : undefined;
 }
 
+/** The notes files in content/, by the language each is in: `{ cy: { file, text } }`; undefined when there are none. */
+async function notesFiles(dir, files, language) {
+  const found = {};
+  for (const file of files) {
+    const match = NOTES.exec(file);
+    const tag = match && (match[1] === undefined ? language : languageCode(match[1]));
+    if (!tag) continue;
+    if (found[tag]) throw new Error(`content/${found[tag].file} and content/${file} are both in ${tag}; keep one`);
+    found[tag] = { file, text: await readText(join(dir, file)) };
+  }
+  return Object.keys(found).length ? found : undefined;
+}
+
 /** What to tell the owner about each file in content/ that will not be published, or used to make the site. */
 function unused(files, { images, unsupported }, image) {
-  const notes = [];
+  const told = [];
   for (const file of files) {
     if (file.startsWith('.') || file === 'whatiiif.toml' || file === image.name) continue;
-    const description = DESCRIPTION.exec(file);
-    if (description) {
-      if (description[1] !== undefined && !languageCode(description[1])) {
-        notes.push(`content/${file} is not used: "${description[1]}" is not ${LANGUAGE_EXAMPLE}.`);
-      }
+    const texts = DESCRIPTION.exec(file) ?? NOTES.exec(file);
+    if (texts) {
+      if (texts[1] !== undefined && !languageCode(texts[1])) told.push(`content/${file} is not used: "${texts[1]}" is not ${LANGUAGE_EXAMPLE}.`);
     } else if (images.includes(file) || unsupported.includes(file)) {
-      notes.push(`content/${file} is not published: only ${image.name} is.`);
+      told.push(`content/${file} is not published: only ${image.name} is.`);
     } else {
       const meant = closest(file, KNOWN) ?? closest(basename(file, extname(file)), KNOWN);
-      notes.push(`content/${file} is not used${meant ? `; did you mean ${meant}?` : '. content/ holds one picture, whatiiif.toml and description.md.'}`);
+      told.push(`content/${file} is not used${meant ? `; did you mean ${meant}?` : '. content/ holds one picture, whatiiif.toml, description.md and notes.md.'}`);
     }
   }
-  return notes;
+  return told;
 }
 
 /** The picture at `url`, downloaded into `dir`: where it is now, what it is called and what kind of picture it is. */
@@ -74,20 +90,26 @@ async function download(url, dir, fetch) {
     throw new Error(`${url} is a web page, not a picture. Use a link that downloads the picture itself: on GitHub, the link of the file under a release's Assets.`);
   }
   if (!format) {
-    throw new Error(
-      name
-        ? `The picture at ${url} is a ${name}, which is not supported yet. Convert it to TIFF, PNG or JPEG and link to that instead.`
-        : `The picture at ${url} is not a TIFF, PNG or JPEG.`,
-    );
+    if (!name) throw new Error(`The picture at ${url} is not a TIFF, PNG, JPEG, WebP, AVIF or GIF.`);
+    const told = cannotRead(`The picture at ${url}`, name);
+    throw new Error(name === 'HEIC' ? told : `${told} and link to that instead.`);
   }
-  const file = basename(new URL(url).pathname);
-  let fileName;
-  try {
-    fileName = decodeURIComponent(file);
-  } catch {
-    fileName = file;
-  }
-  return { path, name: fileName || 'picture', format, bytes: (await stat(path)).size, url };
+  return { path, name: fileName(response.headers.get('content-disposition'), url) || 'picture', format, bytes: (await stat(path)).size, url };
+}
+
+/** What a downloaded file is called: what the server says (Content-Disposition), else the last part of its address. */
+function fileName(disposition, url) {
+  const decoded = (text) => {
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return text;
+    }
+  };
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition ?? '')?.[1];
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/i.exec(disposition ?? '');
+  const given = encoded ? decoded(encoded.trim()) : (plain?.[2] ?? plain?.[1])?.trim();
+  return basename(given || decoded(basename(new URL(url).pathname)));
 }
 
 /** Every language the texts are written in: the site's own first, then the rest alphabetically. */
@@ -99,8 +121,9 @@ function languagesOf(language, texts) {
 
 /**
  * Everything in `dir` that the site is made from: the picture, the settings with their defaults, the description
- * as HTML (a language map, like every text), every language any of those texts is in, and `notes` on files in
- * `dir` that are not used. A picture named by its link in the settings is downloaded into `downloads` with `fetch`.
+ * as HTML (a language map, like every text), any notes on the picture, every language any of those texts is in,
+ * what is `unused` in `dir`, and the `settings` as written, without the defaults that come from the picture. A
+ * picture named by its link in the settings is downloaded into `downloads` with `fetch`.
  */
 export async function readContent(dir, { fetch = globalThis.fetch, downloads } = {}) {
   const files = (await readdir(dir)).sort();
@@ -121,7 +144,13 @@ export async function readContent(dir, { fetch = globalThis.fetch, downloads } =
   const title = settings.title ?? { [settings.language]: basename(image.name, extname(image.name)) };
   const config = { ...settings, title, alt: settings.alt ?? title };
   const description = await descriptions(dir, files, config.language);
-  const { summary, attribution, alt, metadata } = config;
-  const texts = [title, summary, attribution, alt, description, ...metadata.flatMap(({ label, value }) => [label, value])];
-  return { image, config, description, languages: languagesOf(config.language, texts), notes: unused(files, pictures, image) };
+  const written = await notesFiles(dir, files, config.language);
+  const notes = written && combineNotes(written, config.language);
+  const { summary, creator, date, attribution, alt, metadata } = config;
+  const texts = [
+    ...[title, summary, creator, date, attribution, alt, description, notes?.intro],
+    ...metadata.flatMap(({ label, value }) => [label, value]),
+    ...(notes?.items ?? []).flatMap((note) => [note.title, note.text]),
+  ];
+  return { image, config, settings, description, notes, languages: languagesOf(config.language, texts), unused: unused(files, pictures, image) };
 }

@@ -12,6 +12,8 @@ export interface MountOptions {
   onError: (message: string) => void;
   /** Inside someone else's page: leave a plain scroll or a one-finger drag to scroll that page, where the viewer can. */
   cooperative: boolean;
+  /** Told which note's marker the visitor chose, if the picture has notes and markers are to be shown for them. */
+  onNote?: (index: number) => void;
 }
 
 /** A viewer showing the picture: it can be moved to show a part of it, and taken down. */

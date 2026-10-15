@@ -13,21 +13,17 @@ export async function dirSize(dir) {
   return total;
 }
 
-const mb = (bytes) => `${Math.round(bytes / 1024 / 1024)} MB`;
-
-/** Keeps the site under the Pages limit by dropping full/max first; throws if the tiles alone do not fit. */
+/**
+ * Keeps the site under the Pages limit by dropping full/max if it must. Says whether the rest fits, and how many
+ * bytes it takes either way.
+ */
 export async function applyBudget({ dir, info, budgetBytes = PAGES_BUDGET_BYTES }) {
   let bytes = await dirSize(dir);
-  if (bytes <= budgetBytes) return { bytes, droppedFull: false };
+  if (bytes <= budgetBytes) return { fits: true, bytes, droppedFull: false };
 
   const maxIsNeeded = expectedRequests(info).includes('full/max/0/default.jpg');
-  if (!maxIsNeeded) {
-    await rm(join(dir, 'full/max'), { recursive: true, force: true });
-    bytes = await dirSize(dir);
-    if (bytes <= budgetBytes) return { bytes, droppedFull: true };
-  }
-  throw new Error(
-    `The image tiles are too large for GitHub Pages: ${mb(bytes)} against a ${mb(budgetBytes)} budget. ` +
-      'Lower tiles.quality in content/whatiiif.toml or use a smaller source image.',
-  );
+  if (maxIsNeeded) return { fits: false, bytes, droppedFull: false };
+  await rm(join(dir, 'full/max'), { recursive: true, force: true });
+  bytes = await dirSize(dir);
+  return { fits: bytes <= budgetBytes, bytes, droppedFull: true };
 }

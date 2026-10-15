@@ -1,4 +1,5 @@
-# Opens a pull request when a newer version of the template is released.
+# Opens a pull request when a newer version of WhatIIIF is released. The steps are kept in the WhatIIIF repository
+# (offer-update.yml there); this file says only when to run them.
 # Needs Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
 name: Update
 
@@ -13,9 +14,5 @@ permissions:
 
 jobs:
   update:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - run: engine/ci/update.sh
-        env:
-          GH_TOKEN: ${{ github.token }}
+    uses: gjhilton/WhatIIIF/.github/workflows/offer-update.yml@e45ef5087b7a058eb07dad439837437d3ab6fb6f
+    secrets: inherit

@@ -149,7 +149,7 @@ test('a newer release replaces the engine on a branch, leaves content/ alone and
   assert.doesNotMatch(await show('.github/workflows/deploy.yml'), /changed upstream/);
 
   // ...and the pull request has to say so, linking each file to copy and the place to paste it.
-  assert.match(await gh.calls(), /pr create --title Update whatiiif to 9\.9\.9/);
+  assert.match(await gh.calls(), /pr create --title Update WhatIIIF to 9\.9\.9/);
   const body = await gh.body();
   assert.match(body, new RegExp(`from \\*\\*example/whatiiif\\*\\* ${oldVersion.replaceAll('.', '\\.')} → 9\\.9\\.9`));
   assert.match(body, /Your `content\/` is untouched/);
@@ -221,9 +221,10 @@ test('when the repository does not let workflows open pull requests, the run fai
 
 test('changes to workflows that only run in the template itself are not passed on as work to do', async () => {
   const upstream = await release('9.9.9', async (dir) => {
-    for (const file of ['ci.yml', 'live.yml']) {
+    for (const file of ['ci.yml', 'live.yml', 'publish.yml', 'offer-update.yml', 'release.yml']) {
       await writeFile(join(dir, '.github/workflows', file), `${await read(join(dir, '.github/workflows', file))}# changed upstream\n`);
     }
+    await writeFile(join(dir, '.github/workflows/tidy.yml'), '# whatiiif: template only. Copies call this one; they need no copy of it.\nname: Tidy\n');
   });
   const user = await userCopy();
   const origin = await tempDir('origin');
@@ -289,4 +290,61 @@ test('the update workflow does nothing, successfully, in the template repository
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(await gh.calls(), '');
+});
+
+// A copy's own workflows call the steps kept in the template's repository, so the steps improve without anyone
+// copying a workflow file by hand. Read as text: the template has no YAML parser, and these lines are the contract.
+const workflow = (name) => read(join(template, '.github/workflows', name));
+
+test("a copy's Deploy and Update workflows call the template's, by the repository named in engine/UPSTREAM", async () => {
+  const upstream = (await read(join(template, 'engine/UPSTREAM'))).trim();
+  for (const [caller, called] of [['deploy.yml', 'publish.yml'], ['update.yml', 'offer-update.yml']]) {
+    const text = await workflow(caller);
+    assert.match(text, new RegExp(`uses: ${upstream}/\\.github/workflows/${called.replace('.', '\\.')}@v0\\n\\s+secrets: inherit`), caller);
+    assert.doesNotMatch(text, /template only/, `${caller} is copied`);
+    assert.match(await workflow(called), /^# whatiiif: template only\./, `${called} is not`);
+    assert.match(await workflow(called), /\n {2}workflow_call:/, `${called} is called`);
+  }
+});
+
+test('the steps copies call still run the scripts at the paths copies have always had', async () => {
+  const publish = await workflow('publish.yml');
+  assert.match(publish, /run: node engine\/ci\/has-image\.js/);
+  assert.match(publish, /run: engine\/ci\/build\.sh/);
+  assert.match(publish, /node-version-file: engine\/\.node-version/);
+  assert.match(await workflow('offer-update.yml'), /run: engine\/ci\/update\.sh/);
+});
+
+test('a release moves the v0 tag that copies call, and only in the template', async () => {
+  const text = await workflow('release.yml');
+  assert.match(text, /^# whatiiif: template only\./);
+  assert.match(text, /if: github\.event\.repository\.is_template/);
+  assert.match(text, /git tag -f "\$major"/);
+  // A pre-release is for trying out: copies keep running the last full release.
+  assert.match(text, /if: github\.event\.repository\.is_template && !github\.event\.release\.prerelease/);
+  assert.match(text, /::error title=\$major still points at the previous release::.*move it by hand/, 'a tag left behind says how to move it');
+});
+
+test('packages are kept up to date in the template only, and checked before they are offered', async () => {
+  const text = await workflow('dependencies.yml');
+  assert.match(text, /^# whatiiif: template only\./);
+  assert.match(text, /if: github\.event\.repository\.is_template/);
+  assert.match(text, /^\s+npm update$/m);
+  const [tested, offered] = [text.indexOf('npm run test:e2e'), text.indexOf('gh pr create')];
+  assert.ok(tested > 0 && offered > tested, 'the tests pass before the pull request is opened');
+  // A dependabot.yml would be copied into every site made from the template, and open pull requests there for
+  // packages its Update workflow looks after.
+  await assert.rejects(read(join(template, '.github/dependabot.yml')));
+});
+
+test('after each change, the Live workflow publishes the template to both demos, the plain one and the one with notes', async () => {
+  const text = await workflow('live.yml');
+  assert.match(text, /^# whatiiif: template only\./);
+  for (const [repository, key] of [['DEMO_REPOSITORY', 'DEMO_DEPLOY_KEY'], ['NOTES_DEMO_REPOSITORY', 'NOTES_DEMO_DEPLOY_KEY']]) {
+    assert.match(text, new RegExp(`- \\{ repository: ${repository}, key: ${key} \\}`), repository);
+  }
+  assert.match(text, /vars\[matrix\.demo\.repository\]/);
+  assert.match(text, /secrets\[matrix\.demo\.key\]/);
+  // The demos run publish.yml at the commit tried, so a change to it alone is tried on them too.
+  assert.match(text, /paths: \[[^\]]*'\.github\/workflows\/publish\.yml'/);
 });

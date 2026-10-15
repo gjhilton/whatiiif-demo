@@ -13,12 +13,14 @@ export function imageInfo({ id, width, height, tileSize }) {
   while (Math.max(width, height) / scaleFactors.at(-1) > tileSize) scaleFactors.push(scaleFactors.at(-1) * 2);
 
   // Whole-image renditions for thumbnails and previews. Viewers built on OpenSeadragon 4-5 read `sizes` as the
-  // pyramid levels, so only real levels may be listed: the smaller ones here, deep zoom covers the rest.
-  const sizes = scaleFactors
+  // pyramid levels, so only real levels may be listed: the smaller ones here, deep zoom covers the rest. The
+  // smallest level is always listed, however long, so that a picture cut into tiles bigger than MAX_SIZE still has a
+  // whole-picture file other than full/max, which its owner may choose not to publish.
+  const levels = scaleFactors
     .filter((s) => s > 1)
     .map((s) => ({ width: Math.ceil(width / s), height: Math.ceil(height / s) }))
-    .filter((size) => Math.max(size.width, size.height) <= MAX_SIZE)
     .reverse();
+  const sizes = levels.filter((size, i) => i === 0 || Math.max(size.width, size.height) <= MAX_SIZE);
 
   return {
     '@context': 'http://iiif.io/api/image/3/context.json',

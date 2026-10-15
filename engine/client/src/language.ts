@@ -17,10 +17,13 @@ export function chooseLanguage(site: Site, wanted: readonly (string | undefined)
   return site.language;
 }
 
+/** The `lang` attribute for text in `language`: none for IIIF's "none", text in no particular language. */
+export const htmlLang = (language: string) => (language === 'none' ? undefined : language);
+
 /** A text in `language`, else in the site's language, else in any it has; `lang` is the language it is really in. */
 export function inLanguage(text: Text, language: string, site: Site): { text: string; lang?: string } {
   const found = [language, site.language, ...Object.keys(text)].find((tag) => tag in text)!;
-  return { text: text[found], lang: found === 'none' ? undefined : found };
+  return { text: text[found], lang: htmlLang(found) };
 }
 
 /** A language's own name for itself, such as Cymraeg for cy. */
