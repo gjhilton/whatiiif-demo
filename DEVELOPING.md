@@ -112,13 +112,12 @@ after every change to `main`, after every release, and once a day. Copies of the
   `DEMO_DEPLOY_KEY` and `NOTES_DEMO_DEPLOY_KEY` secrets.
 - **screenshots:** once both demos are up, remakes the README's screenshots of them on a Mac
   (`engine/test/support/readme-screenshots.js`) and commits to `main` any that look different. Pull before working.
-- **trial:** `npm run test:live`, which makes public repositories with "Use this template" and tries the template in
-  them as a newcomer would, then deletes them. It needs the `LIVE_TRIAL_TOKEN` secret, a classic personal access
-  token with the `repo`, `workflow` and `delete_repo` scopes, and fails without it.
-
-`npm run test:live` also runs by hand, using your `gh` login, with the trials' workflows calling the steps at the
-commit tried (so push it first). It deletes each repository afterwards if `gh` may (`gh auth refresh -s delete_repo`,
-once); otherwise it names the repository to delete by hand. The trials:
+The trials in repositories made from the template are run by hand, not by Live: `npm run test:live` makes public
+repositories with "Use this template" and tries the template in them as a newcomer would. Run them before every
+release, and after any change to the workflows or to what they run (the build, Deploy, Update), once it is on `main`
+or pushed. They use your `gh` login, with the trials' workflows calling the steps at the commit tried (so push it
+first). Each repository is deleted afterwards if `gh` may (`gh auth refresh -s delete_repo`, once); otherwise the run
+names the repository to delete by hand. The trials:
 
 - `github.live.js` puts this commit of the template in its repository and does what a newcomer might. It uploads
   a picture before switching Pages on and expects the run to say how to fix that, switches Pages on and re-runs,

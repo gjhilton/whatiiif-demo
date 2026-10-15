@@ -1,5 +1,5 @@
-// Shared by the tests on real GitHub, which the Live workflow runs with its LIVE_TRIAL_TOKEN, and anyone can run
-// logged in with gh (about ten minutes):
+// Shared by the tests on real GitHub, which are run by hand, logged in with gh, before every release and after any
+// change to the workflows or what they run (about ten minutes):
 //
 //   npm run test:live
 //

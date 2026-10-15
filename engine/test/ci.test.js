@@ -339,7 +339,7 @@ test('packages are kept up to date in the template only, and checked before they
 
 test("once both demos are up, the README's screenshots of them are remade on a Mac and committed if they changed", async () => {
   const text = await workflow('live.yml');
-  const job = text.slice(text.indexOf('\n  screenshots:'), text.indexOf('\n  trial:'));
+  const job = text.slice(text.indexOf('\n  screenshots:'));
   assert.match(job, /needs: demo/);
   assert.match(job, /runs-on: macos-/);
   assert.match(job, /node engine\/test\/support\/readme-screenshots\.js/);
@@ -347,13 +347,11 @@ test("once both demos are up, the README's screenshots of them are remade on a M
   assert.match(job, /git push -q origin HEAD:main/);
 });
 
-test('every Live run also tries the template in new repositories made from it, as a newcomer would', async () => {
+test('the trials in new repositories made from the template are run by hand, not by Live, which would need a token that may make and delete repositories', async () => {
   const text = await workflow('live.yml');
-  const job = text.slice(text.indexOf('\n  trial:'));
-  assert.match(job, /npm run test:live/);
-  assert.match(job, /GH_TOKEN: \$\{\{ secrets\.LIVE_TRIAL_TOKEN \}\}/);
-  assert.match(job, /::error title=No LIVE_TRIAL_TOKEN::/, 'a missing token fails the run, rather than skipping the trials unseen');
-  assert.match(job, /fetch-depth: 0/);
+  assert.doesNotMatch(text, /\n  trial:|npm run test:live\n|LIVE_TRIAL_TOKEN/);
+  assert.match(text, /run by hand, with `npm run test:live`/);
+  assert.match(await read(join(template, 'DEVELOPING.md')), /Run them before every\s+release/);
 });
 
 test('after each change, the Live workflow publishes the template to both demos, the plain one and the one with notes', async () => {

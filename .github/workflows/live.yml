@@ -6,9 +6,8 @@
 #   checks the live sites. Each is pushed to with a deploy key for it alone.
 # - screenshots: once both demos are up, remakes the README's screenshots of them on a Mac and commits any that look
 #   different to main.
-# - trial: makes repositories from the template as a newcomer would and tries it in them (engine/test/live), with
-#   the LIVE_TRIAL_TOKEN secret, a token that may create and delete repositories.
-# Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
+# The trials in new repositories made from the template (engine/test/live) are run by hand, with `npm run test:live`:
+# see DEVELOPING.md. Copies of the template have no DEMO_REPOSITORY, so this does nothing there.
 name: Live
 
 on:
@@ -100,27 +99,3 @@ jobs:
           done
           echo "::error title=The README's screenshots were not committed::main kept moving; run Live again."
           exit 1
-
-  trial:
-    if: vars.DEMO_REPOSITORY != ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # the update trial starts a repository on the previous release, by its tag
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: engine/.node-version
-          cache: npm
-      - name: Try the template in repositories made from it, as a newcomer would, then delete them
-        run: |
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "::error title=No LIVE_TRIAL_TOKEN::Add a classic personal access token with the repo, workflow and delete_repo scopes as the LIVE_TRIAL_TOKEN secret: the trials make repositories and delete them."
-            exit 1
-          fi
-          npm ci
-          npx playwright install --with-deps chromium-headless-shell
-          npm run test:live
-        env:
-          GH_TOKEN: ${{ secrets.LIVE_TRIAL_TOKEN }}

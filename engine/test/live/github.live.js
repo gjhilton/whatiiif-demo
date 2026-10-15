@@ -1,6 +1,6 @@
 // WhatIIIF on real GitHub, the way someone new to it might go about it, in a public repository made from the
 // template with "Use this template" and holding this commit of the template, so a change can be tried here before
-// it is merged. Run by the Live workflow, or by hand with `npm run test:live` (see trial.js).
+// it is merged. Run by hand with `npm run test:live` (see trial.js).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFile, stat, writeFile } from 'node:fs/promises';
