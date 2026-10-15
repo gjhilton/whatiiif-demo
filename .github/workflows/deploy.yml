@@ -21,5 +21,5 @@ concurrency:
 
 jobs:
   publish:
-    uses: gjhilton/WhatIIIF/.github/workflows/publish.yml@c82b10243dc1b860c09b9821e347bf187ed3cab3
+    uses: gjhilton/WhatIIIF/.github/workflows/publish.yml@b7c71a7c532616bc7def1c6979f76c4123f739c4
     secrets: inherit

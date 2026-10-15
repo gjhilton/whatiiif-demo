@@ -347,6 +347,51 @@ test("once both demos are up, the README's screenshots of them are remade on a M
   assert.match(job, /git push -q origin HEAD:main/);
 });
 
+/**
+ * A demo made from the template, as a bare repository holding only its picture, and a `gh` that answers for its
+ * Deploy run: watching it is cut off by the network the first time, while the run goes on; watched again, it
+ * ends in `conclusion`.
+ */
+async function demoToDeploy(conclusion) {
+  const demo = await tempDir('demo');
+  await git(demo, ['init', '-q', '--bare']);
+  const seed = await tempDir('seed');
+  await git(seed, ['init', '-q']);
+  await mkdir(join(seed, 'content'));
+  await writeFile(join(seed, 'content/picture.png'), 'a picture');
+  await commit(seed, 'The demo');
+  await git(seed, ['push', '-q', demo, 'HEAD']);
+  const bin = await tempDir('bin');
+  const log = join(bin, 'calls');
+  await writeFile(
+    join(bin, 'gh'),
+    `#!/bin/bash
+echo "$*" >> "${log}"
+case "$1 $2" in
+  "run list") echo 42 ;;
+  "run watch") if [ ! -e "${log}.cut" ]; then touch "${log}.cut"; echo 'read: connection reset by peer' >&2; exit 1; fi; touch "${log}.ended" ;;
+  "run view") if [ -e "${log}.ended" ]; then echo ${conclusion}; else echo; fi ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+`,
+  );
+  await chmod(join(bin, 'gh'), 0o755);
+  const cwd = await templateCopy();
+  const result = await run('bash', ['engine/test/live/deploy-demo.sh', 'someone/demo'], { cwd, env: { PATH: `${bin}:${process.env.PATH}`, DEMO_GIT_URL: demo } });
+  return { ...result, calls: await read(log) };
+}
+
+test("a demo's Deploy is judged by how its run ended, not by a watch of it that the network cut off", async () => {
+  const deployed = await demoToDeploy('success');
+  assert.equal(deployed.code, 0, deployed.stderr);
+  assert.equal(deployed.stdout.trim().split('\n').at(-1), 'https://someone.github.io/demo/');
+  assert.match(deployed.calls, /run watch 42[^\n]*\n(?:.*\n)*run watch 42/, 'watched again once cut off');
+
+  const failed = await demoToDeploy('failure');
+  assert.equal(failed.code, 1);
+  assert.match(failed.stderr, /someone\/demo's Deploy ended in failure: https:\/\/github\.com\/someone\/demo\/actions\/runs\/42/);
+});
+
 test('the trials in new repositories made from the template are run by hand, not by Live, which would need a token that may make and delete repositories', async () => {
   const text = await workflow('live.yml');
   assert.doesNotMatch(text, /\n  trial:|npm run test:live\n|LIVE_TRIAL_TOKEN/);
