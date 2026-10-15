@@ -47,9 +47,9 @@ nothing: each writes a file for its owner to paste into GitHub, checked by the b
 build gives them the files as written, in `settings.json`.
 
 A copy's own `deploy.yml` and `update.yml` say only when to run: they call `publish.yml` and `offer-update.yml` in
-this repository at the `v0` tag, which each release moves (`release.yml`), so steps improve in every copy without
-anyone copying a workflow file. Those run the copy's own `engine/ci/has-image.js`, `engine/ci/build.sh`,
-`engine/ci/update.sh` and `engine/.node-version`, and a copy may be on any earlier release, so those paths must stay
+this repository at the tag of their major version (`v1` for 1.x), which each release of that major version moves
+(`release.yml`), so steps improve in every copy without anyone copying a workflow file. Those run the copy's own
+`engine/ci/has-image.js`, `engine/ci/build.sh`, `engine/ci/update.sh` and `engine/.node-version`, and a copy may be on any earlier release, so those paths must stay
 put and keep working as they do. A workflow whose first line is `# whatiiif: template only` is never passed on to
 copies. To make a template of your own from this one, change `gjhilton/WhatIIIF` in `deploy.yml` and `update.yml`
 as well as in `engine/UPSTREAM`.
@@ -101,17 +101,21 @@ over HTTP. It runs only in the template itself, not in copies made from it.
 ## On real GitHub
 
 The tests above run what the workflows run, but not the workflows themselves, GitHub Pages or Git LFS on GitHub.
-**Live** (`.github/workflows/live.yml`) covers those, and keeps everything outside this repository in step with it,
-after every change to `main`, after every release, and once a day. Copies of the template have no
+**Live** (`.github/workflows/live.yml`) covers those, and keeps everything outside this repository in step with it.
+`main` is production: Live runs after every push to `main`, whatever it changed, after every release, and once a
+day. Copies of the template have no
 `DEMO_REPOSITORY` and skip it. Its jobs:
 
 - **demo:** pushes the template to each demo repository, named by the `DEMO_REPOSITORY` variable (the plain demo) and
-  `NOTES_DEMO_REPOSITORY` (the one with notes and a tour), keeping its `content/` and with its workflows calling this
-  commit's steps rather than `v0`'s, waits for the demo's own Deploy workflow and runs `check-site.js` on the live
-  site (`engine/test/live/deploy-demo.sh`). It pushes with a deploy key for each demo alone, stored as the
+  `NOTES_DEMO_REPOSITORY` (the one with notes and a tour), keeping its `content/`, exactly as a site made from the
+  template now would be (its workflows calling the steps at `v1`), waits for the demo's own Deploy workflow and runs
+  `check-site.js` on the live site (`engine/test/live/deploy-demo.sh`). The steps of a commit not yet released are
+  tried by the live trials, by hand. It pushes with a deploy key for each demo alone, stored as the
   `DEMO_DEPLOY_KEY` and `NOTES_DEMO_DEPLOY_KEY` secrets.
 - **screenshots:** once both demos are up, remakes the README's screenshots of them on a Mac
   (`engine/test/support/readme-screenshots.js`) and commits to `main` any that look different. Pull before working.
+- **released:** fails if the shared steps on `main` (`publish.yml`, `offer-update.yml`) are not those at the tag sites
+  call them at (`v1` for 1.x): sites do not have them until a release moves that tag, so a release is due.
 The trials in repositories made from the template are run by hand, not by Live: `npm run test:live` makes public
 repositories with "Use this template" and tries the template in them as a newcomer would. Run them before every
 release, and after any change to the workflows or to what they run (the build, Deploy, Update), once it is on `main`

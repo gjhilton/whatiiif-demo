@@ -42,8 +42,8 @@ export const git = (cwd, args, { lfs = false } = {}) =>
   exec('git', [...AS_ME, ...(lfs ? [] : NO_LFS), ...args], { cwd, env: { ...process.env, GIT_LFS_SKIP_SMUDGE: '1' }, maxBuffer: 64 * 1024 * 1024 });
 
 /**
- * Points a copy's workflows, which call the template's steps at the v0 tag (the last release), at commit `sha`
- * instead, so a trial runs the steps being tried. GitHub must have that commit.
+ * Points a copy's workflows, which call the template's steps at the tag of its major version (v1 for 1.x, the last
+ * release), at commit `sha` instead, so a trial runs the steps being tried. GitHub must have that commit.
  */
 async function callStepsAt(work, sha, upstream) {
   if ((await run('gh', ['api', `repos/${upstream}/commits/${sha}`, '--silent'])).code !== 0) {
@@ -52,7 +52,7 @@ async function callStepsAt(work, sha, upstream) {
   const dir = join(work, '.github/workflows');
   for (const file of await readdir(dir)) {
     const text = await readFile(join(dir, file), 'utf8');
-    await writeFile(join(dir, file), text.replace(/(uses: \S+\/\.github\/workflows\/[^@\s]+)@v0$/gm, `$1@${sha}`));
+    await writeFile(join(dir, file), text.replace(/(uses: \S+\/\.github\/workflows\/[^@\s]+)@v\d+$/gm, `$1@${sha}`));
   }
 }
 

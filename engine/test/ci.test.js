@@ -296,11 +296,13 @@ test('the update workflow does nothing, successfully, in the template repository
 // copying a workflow file by hand. Read as text: the template has no YAML parser, and these lines are the contract.
 const workflow = (name) => read(join(template, '.github/workflows', name));
 
-test("a copy's Deploy and Update workflows call the template's, by the repository named in engine/UPSTREAM", async () => {
+test("a copy's Deploy and Update workflows call the template's, by the repository named in engine/UPSTREAM, at the tag of its version's major", async () => {
   const upstream = (await read(join(template, 'engine/UPSTREAM'))).trim();
+  // A copy made from the template is all one version: on 1.x, its workflows call the steps at v1, as its engine is 1.x.
+  const major = `v${(await read(join(template, 'engine/VERSION'))).trim().split('.')[0]}`;
   for (const [caller, called] of [['deploy.yml', 'publish.yml'], ['update.yml', 'offer-update.yml']]) {
     const text = await workflow(caller);
-    assert.match(text, new RegExp(`uses: ${upstream}/\\.github/workflows/${called.replace('.', '\\.')}@v0\\n\\s+secrets: inherit`), caller);
+    assert.match(text, new RegExp(`uses: ${upstream}/\\.github/workflows/${called.replace('.', '\\.')}@${major}\\n\\s+secrets: inherit`), caller);
     assert.doesNotMatch(text, /template only/, `${caller} is copied`);
     assert.match(await workflow(called), /^# whatiiif: template only\./, `${called} is not`);
     assert.match(await workflow(called), /\n {2}workflow_call:/, `${called} is called`);
@@ -403,18 +405,55 @@ esac
   await chmod(join(bin, 'gh'), 0o755);
   const cwd = await templateCopy();
   const result = await run('bash', ['engine/test/live/deploy-demo.sh', 'someone/demo'], { cwd, env: { PATH: `${bin}:${process.env.PATH}`, DEMO_GIT_URL: demo } });
-  return { ...result, calls: await read(log) };
+  return { ...result, demo, calls: await read(log) };
 }
 
 test("a demo's Deploy is judged by how its run ended, not by a watch of it that the network cut off", async () => {
   const deployed = await demoToDeploy('success');
   assert.equal(deployed.code, 0, deployed.stderr);
   assert.equal(deployed.stdout.trim().split('\n').at(-1), 'https://someone.github.io/demo/');
+  // The demo is as a site made from the template now is: its workflows call the steps at the tag they name.
+  for (const file of ['deploy.yml', 'update.yml']) {
+    const shown = (await git(deployed.demo, ['show', `HEAD:.github/workflows/${file}`])).stdout;
+    assert.equal(shown, await workflow(file), `${file} as the template has it`);
+  }
   assert.match(deployed.calls, /run watch 42[^\n]*\n(?:.*\n)*run watch 42/, 'watched again once cut off');
 
   const failed = await demoToDeploy('failure');
   assert.equal(failed.code, 1);
   assert.match(failed.stderr, /someone\/demo's Deploy ended in failure: https:\/\/github\.com\/someone\/demo\/actions\/runs\/42/);
+});
+
+test('main is production: Live runs on every push to main, whatever changed, so the demos have it within minutes', async () => {
+  const text = await workflow('live.yml');
+  assert.match(text, /\n {2}push:\n {4}branches: \[main\]\n {2}\S/);
+  assert.doesNotMatch(text, /\n {4}paths:/);
+});
+
+/** The script of the Live step that checks sites have the shared steps on main, run in a repository like this one. */
+async function checkReleased({ release, main }) {
+  const text = await workflow('live.yml');
+  const [, block] = text.match(/name: Check that sites have the shared steps on main\n {8}run: \|\n((?: {10}.*\n)+)/);
+  const here = await tempDir('here');
+  await git(here, ['init', '-q']);
+  await mkdir(join(here, 'engine'), { recursive: true });
+  await mkdir(join(here, '.github/workflows'), { recursive: true });
+  await writeFile(join(here, 'engine/VERSION'), '1.0.0\n');
+  for (const [file, steps] of Object.entries(release)) await writeFile(join(here, '.github/workflows', file), steps);
+  await commit(here, '1.0.0');
+  await git(here, ['tag', 'v1']);
+  for (const [file, steps] of Object.entries(main)) await writeFile(join(here, '.github/workflows', file), steps);
+  await writeFile(join(here, 'README.md'), 'Changed on main since.\n'); // main has moved on, whether or not the steps have
+  await commit(here, 'main');
+  return run('bash', ['-c', block.replace(/^ {10}/gm, '')], { cwd: here });
+}
+
+test('Live fails when the shared steps on main are not yet the ones sites run, at the tag of their major version', async () => {
+  const released = { 'publish.yml': 'steps\n', 'offer-update.yml': 'offer\n' };
+  assert.equal((await checkReleased({ release: released, main: released })).code, 0);
+  const ahead = await checkReleased({ release: released, main: { ...released, 'publish.yml': 'better steps\n' } });
+  assert.equal(ahead.code, 1);
+  assert.match(ahead.stdout, /::error title=Sites do not have the shared steps on main::\.github\/workflows\/publish\.yml differs from v1/);
 });
 
 test('the trials in new repositories made from the template are run by hand, not by Live, which would need a token that may make and delete repositories', async () => {
@@ -435,6 +474,4 @@ test('after each change, the Live workflow publishes the template to both demos,
   // Kept in step after every release and every day too, not only after a change.
   assert.match(text, /\n {2}release:\n {4}types: \[published\]/);
   assert.match(text, /\n {2}schedule:\n {4}- cron: /);
-  // The demos run publish.yml at the commit tried, so a change to it alone is tried on them too.
-  assert.match(text, /paths: \[[^\]]*'\.github\/workflows\/publish\.yml'/);
 });

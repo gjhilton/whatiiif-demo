@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Puts this commit of the template into a demo repository made from it, keeping the demo's own content/, and
-# waits for the demo's Deploy workflow to publish it to GitHub Pages. Prints the site's address last.
+# waits for the demo's Deploy workflow to publish it to GitHub Pages. Prints the site's address last. The demo is as
+# a site made from the template now would be: its workflows call the steps at the tag they name (v1 for 1.x).
 #
 #   engine/test/live/deploy-demo.sh OWNER/REPO
 #
@@ -18,9 +19,6 @@ git "${nolfs[@]}" clone -q "${DEMO_GIT_URL:-git@github.com:$demo.git}" "$work"
 # Everything but content/ is replaced by this commit's, as "Use this template" would give it today.
 git -C "$work" rm -q -r -- . ':!content'
 git archive HEAD -- $(git ls-tree --name-only HEAD | grep -vx content) | tar -x -C "$work"
-# Its workflows call the template's steps at the v0 tag, the last release: here they call this commit's instead.
-sed -i.orig -E "s#(uses: [^ ]+/\.github/workflows/[^@ ]+)@v0\$#\1@$sha#" "$work"/.github/workflows/*.yml
-rm "$work"/.github/workflows/*.orig
 git -C "$work" "${nolfs[@]}" add -A
 
 if git -C "$work" diff --cached --quiet; then
