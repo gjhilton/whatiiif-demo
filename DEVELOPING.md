@@ -133,7 +133,8 @@ names the repository to delete by hand. The trials:
 Copies of the template update themselves from the repository named in `engine/UPSTREAM`
 (`.github/workflows/update.yml` and `engine/ci/update.sh`). To release, bump `engine/VERSION` and publish a GitHub
 release tagged `vX.Y.Z`; `release.yml` then moves the `v0` tag to it (a pre-release leaves it where it is), and every
-copy runs its steps from then on. An update replaces `engine/`, `package.json` and `package-lock.json` only, and is
+copy runs its steps from then on. It is `v0` whatever the version, 1.0.0 and later too: copies' workflows name that
+tag, and nothing can change it in them. Run `npm run test:live` by hand before and after releasing (see above). An update replaces `engine/`, `package.json` and `package-lock.json` only, and is
 never offered to a copy already on that version or a later one. GitHub does not let the workflow change workflow
 files, so users copy those by hand; the pull request says when they need to, leaving out any workflow marked
 `# whatiiif: template only` (and `ci.yml` and `live.yml`, from before there was a marker).

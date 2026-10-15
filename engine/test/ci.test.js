@@ -319,10 +319,33 @@ test('a release moves the v0 tag that copies call, and only in the template', as
   const text = await workflow('release.yml');
   assert.match(text, /^# whatiiif: template only\./);
   assert.match(text, /if: github\.event\.repository\.is_template/);
-  assert.match(text, /git tag -f "\$major"/);
   // A pre-release is for trying out: copies keep running the last full release.
   assert.match(text, /if: github\.event\.repository\.is_template && !github\.event\.release\.prerelease/);
-  assert.match(text, /::error title=\$major still points at the previous release::.*move it by hand/, 'a tag left behind says how to move it');
+  assert.match(text, /::error title=v0 still points at the previous release::.*move it by hand/, 'a tag left behind says how to move it');
+});
+
+test('every release moves v0, 1.0.0 and later too: copies call the steps at v0, and cannot be made to call another tag', async () => {
+  // The step's script, run as the workflow runs it, in a clone of a repository whose releases are tagged.
+  const text = await workflow('release.yml');
+  const [, block] = text.match(/\n {8}run: \|\n((?: {10}.*\n)+)/);
+  const script = block.replace(/^ {10}/gm, '');
+  const origin = await tempDir('origin');
+  await git(origin, ['init', '-q', '--bare']);
+  const here = await tempDir('here');
+  await git(here, ['init', '-q']);
+  await writeFile(join(here, 'a'), '0.4.0');
+  await commit(here, '0.4.0');
+  await git(here, ['tag', 'v0.4.0']);
+  await git(here, ['tag', 'v0']);
+  await writeFile(join(here, 'a'), '1.0.0');
+  await commit(here, '1.0.0');
+  await git(here, ['tag', 'v1.0.0']);
+  await git(here, ['remote', 'add', 'origin', origin]);
+  await git(here, ['push', '-q', 'origin', 'HEAD:main', '--tags']);
+  const moved = await run('bash', ['-c', script], { cwd: here, env: { TAG: 'v1.0.0' } });
+  assert.equal(moved.code, 0, moved.stderr);
+  const tagged = async (tag) => (await git(origin, ['rev-parse', `${tag}^{commit}`])).stdout.trim();
+  assert.equal(await tagged('v0'), await tagged('v1.0.0'));
 });
 
 test('packages are kept up to date in the template only, and checked before they are offered', async () => {
