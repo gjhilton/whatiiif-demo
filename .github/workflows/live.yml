@@ -105,6 +105,8 @@ jobs:
           npm ci
           npx playwright install chromium-headless-shell
           node engine/test/support/readme-screenshots.js
+        env:
+          GH_TOKEN: ${{ github.token }} # to list the demos' content/
       - name: Commit any that look different
         run: |
           git add engine/artwork
