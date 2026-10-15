@@ -56,6 +56,7 @@ const states = {
   // from its <noscript>, and the page's own script left out.
   'the page without JavaScript': { query: '', ready: '.fallback img', withoutScript: true },
   'the settings helper': { query: 'settings.html', ready: 'textarea' },
+  'the notes helper': { query: 'notes.html', ready: '.note-area' },
   'the page on its tour of the notes': {
     query: '?viewer=openseadragon',
     ready: '.note-marker',

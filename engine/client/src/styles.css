@@ -109,6 +109,21 @@ a { color: var(--ink); text-underline-offset: 0.15em; }
 .settings-file textarea { width: 100%; margin-bottom: 0.5rem; font: 0.8rem/1.45 ui-monospace, monospace; }
 .settings-file ol { padding-left: 1.25rem; }
 
+/* The notes helper (notes.html): the picture, each note's part outlined and numbered on it, above the notes and the
+   file they make. */
+.notes-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; max-width: 72rem; margin: 0 auto; padding: 0.75rem 16px 0; }
+.notes-toolbar .hint { flex-basis: 100%; margin: 0; }
+.note-area { border: 2px solid var(--ink); box-shadow: 0 0 0 2px var(--paper), inset 0 0 0 2px var(--paper); pointer-events: none; }
+.note-area[data-selected] { border-width: 4px; }
+.note-area .note-marker { position: absolute; top: -2px; left: -2px; pointer-events: auto; }
+.drawn-area { border: 2px dashed var(--ink); box-shadow: 0 0 0 2px var(--paper); pointer-events: none; }
+.drawing .openseadragon-canvas { cursor: crosshair; }
+.drawing .note-area .note-marker { pointer-events: none; } /* a part can be drawn from anywhere, a number's corner too */
+.notes-list { margin: 0; padding: 0; list-style: none; }
+.notes-list li[aria-current] fieldset { border-width: 3px; }
+.note-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+.settings button:disabled { opacity: 0.4; cursor: default; }
+
 /* On paper: the title, the view as it was on screen, the details, and the citation; black on white, whatever the
    screen's colours, since browsers leave backgrounds out of print. */
 .print-only, .print-view { display: none; }

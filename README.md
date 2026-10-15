@@ -49,7 +49,7 @@ You need a free GitHub account, and nothing else: everything below happens in yo
 | **IIIF** | The picture is published as a [IIIF](https://iiif.io) image service and manifest, so it opens in any IIIF viewer. |
 
 **Later, if you want them:** [notes on the picture, and a tour](#going-further-notes-on-the-picture-and-a-tour) that visitors
-can step through. Your site does not need them, and you can add them at any time.
+can step through, written with your site's notes helper. Your site does not need them, and you can add them at any time.
 
 ## Make your site
 
@@ -132,6 +132,20 @@ they make a tour that visitors step through, the viewer moving to each part in t
 [notes demo](https://gjhilton.github.io/whatiiif-demo-notes/).
 
 ![The notes demo on its tour: a lighthouse in a drawing of a harbour, numbered markers on the picture, and below it the first of five notes, with Back and Next](engine/artwork/notes-demo.png)
+
+The easiest way to write them is your site's **notes helper**, at
+`https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/notes.html`:
+
+1. Zoom in on a part of the picture and choose **Add a note for the part in view**, or choose **Draw a new note's
+   part** and drag round it.
+2. Give the note a title and what you want to say. Add as many as you like, and put them in the order of the tour.
+3. Copy the `notes.md` it writes, follow its link to GitHub, paste it in, and click **Commit changes**.
+
+![The notes helper: the picture with each note's part outlined and numbered, the buttons that add a note, and below them the first note, its title, its part of the picture and its text](engine/artwork/notes-helper.png)
+
+It starts from your notes as they are, so come back to it to change them. It checks them as the build will.
+
+Or write `content/notes.md` yourself:
 
 1. On your site, zoom in on the part you want to write about, and copy **Link to this view**.
 2. In your repository, open the **content** folder and choose **Add file → Create new file**. Call it `notes.md`.

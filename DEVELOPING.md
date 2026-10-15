@@ -25,9 +25,10 @@ at the top of the run's page as annotations, with a summary below them (`report.
 - `manifest.js` writes the IIIF Presentation 3.0 manifest, with any notes on the picture as commenting annotations.
   The original file is not published; the manifest links to it in the repository (`original.js`), unless the
   repository is private or the owner says not to, or at the address it was downloaded from.
-- `page.js` writes the title, icon (cut from the picture), the owner's colours, social-card tags, a no-JavaScript
-  fallback and `site.json` itself into the built page, between marker comments, so the page Vite builds is the same
-  for every image. A page without them (Vite's own) loads `site.json` instead.
+- `page.js` writes, at the top of every page, a comment saying it was published with WhatIIIF, which version, and
+  where WhatIIIF and the site come from. Into the main page it also writes the title, icon (cut from the picture),
+  the owner's colours, social-card tags, a no-JavaScript fallback and `site.json` itself, between marker comments,
+  so the page Vite builds is the same for every image. A page without them (Vite's own) loads `site.json` instead.
 
 The page (`engine/client/src/`): `App.tsx` holds what is on screen (viewer, language, part of the picture),
 `address.ts` reads and writes the page's address so that any view is a link (and a link in the description can
@@ -38,6 +39,12 @@ move it to a part of the picture, and reports where the visitor has moved it. No
 Mirador lists them from the manifest. None of these appear in an embedded view. Every colour is in `colours.css`, with
 black and white swapped for dark mode; nothing else names one, and both viewers take theirs from it (`colours.ts`),
 opening again if the computer switches between light and dark.
+
+The owner's two helpers are pages of their own, built beside the main one and published with every site. They save
+nothing: each writes a file for its owner to paste into GitHub, checked by the build's own code. `settings/` writes
+`whatiiif.toml` (`config.js`, `write-config.js`); `notes/` writes `notes.md` (`readNotesSource` and
+`writeNotesSource` in `notes.js`), its parts of the picture marked on the picture itself (`notes/picture.ts`). The
+build gives them the files as written, in `settings.json`.
 
 A copy's own `deploy.yml` and `update.yml` say only when to run: they call `publish.yml` and `offer-update.yml` in
 this repository at the `v0` tag, which each release moves (`release.yml`), so steps improve in every copy without
@@ -76,7 +83,7 @@ npm run test:visual  # the page against reviewed screenshots
   `engine/test/visual/screenshots` (one set per operating system, since fonts differ; CI checks the Linux set). After
   a deliberate change to how the page looks, run `npm run test:visual -- --update-snapshots`, look at every new
   picture, and commit them. For the Linux set, push and take them from the failed CI run's `visual-differences`
-  artifact. The README's screenshots of the demos and the settings helper, in `engine/artwork`, are remade by Live
+  artifact. The README's screenshots of the demos and the two helpers, in `engine/artwork`, are remade by Live
   (below); by hand, `node engine/test/support/readme-screenshots.js`.
 - `live/`: tests on real GitHub (below).
 - `support/`: what the tests share: test images, temporary folders, the IIIF schema, and the harness that copies the

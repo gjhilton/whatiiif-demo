@@ -6,6 +6,15 @@ import { marked } from 'marked';
 const REGION = /#xywh=(?:pixel:)?(\d+),(\d+),(\d+),(\d+)$/;
 const EXAMPLE = '## [The lighthouse](the link to it)';
 
+/** Whether a block token starts a note: a ## heading, not words underlined with dashes, which are often an accident. */
+const startsNote = (token) => token.type === 'heading' && token.depth === 2 && token.raw.startsWith('#');
+const regionOf = (href) => {
+  const match = REGION.exec(href ?? '');
+  if (!match) return undefined;
+  const [x, y, w, h] = match.slice(1).map(Number);
+  return { x, y, w, h };
+};
+
 /** The words in some inline tokens, without their markup. */
 const plain = (tokens = []) => tokens.map((token) => (token.tokens ? plain(token.tokens) : (token.text ?? ''))).join('');
 
@@ -26,7 +35,7 @@ export function parseNotes(text, file, { linked }) {
   for (const token of marked.lexer(text)) {
     // Only a ## heading starts a note: words underlined with dashes are a heading too, but one written by accident
     // as often as not, and they stay in the note's text.
-    if (token.type !== 'heading' || token.depth !== 2 || !token.raw.startsWith('#')) {
+    if (!startsNote(token)) {
       (items.at(-1)?.body ?? intro).push(token);
       continue;
     }
@@ -39,17 +48,12 @@ export function parseNotes(text, file, { linked }) {
     if (link && token.tokens.some((part) => part !== link && plain([part]).trim())) {
       throw new Error(`content/${file}: the note "${title}" has words outside its link. Make the whole heading the link: ## [${title}](${link.href})`);
     }
-    let region;
-    if (link) {
-      const match = REGION.exec(link.href);
-      if (!match) {
-        throw new Error(
-          `content/${file}: the note "${title}" links to ${link.href}, which is not a part of the picture. Zoom in on that part and copy "Link to this view".`,
-        );
-      }
-      const [x, y, w, h] = match.slice(1).map(Number);
-      region = { x, y, w, h };
-    } else if (linked) {
+    const region = link && regionOf(link.href);
+    if (link && !region) {
+      throw new Error(
+        `content/${file}: the note "${title}" links to ${link.href}, which is not a part of the picture. Zoom in on that part and copy "Link to this view".`,
+      );
+    } else if (!link && linked) {
       throw new Error(
         `content/${file}: the note "${title}" does not say which part of the picture it is about. Make its heading a link to that part: zoom in on it, copy "Link to this view", and write ## [${title}](the link).`,
       );
@@ -93,4 +97,41 @@ export function combineNotes(files, language) {
       return { region, title: map((notes) => notes.items[i].title), ...(text && { text }) };
     }),
   };
+}
+
+/**
+ * notes.md as its owner wrote it, for the notes helper to edit: what introduces the notes, and each note's title, the
+ * part of the picture its heading links to (if it does) and its text, in Markdown. It takes what it is given, unlike
+ * parseNotes: the helper says what is missing.
+ */
+export function readNotesSource(text) {
+  const intro = [];
+  const items = [];
+  for (const token of marked.lexer(text)) {
+    if (!startsNote(token)) {
+      (items.at(-1)?.body ?? intro).push(token.raw);
+      continue;
+    }
+    const link = token.tokens.find((part) => part.type === 'link');
+    items.push({ title: plain(token.tokens).trim(), region: regionOf(link?.href), body: [] });
+  }
+  const markdown = (raw) => raw.join('').trim();
+  return { intro: markdown(intro), items: items.map(({ title, region, body }) => ({ title, region, text: markdown(body) })) };
+}
+
+/** `text` escaped so Markdown shows every character of it as it is, rather than reading any as markup. */
+const literal = (text) => text.replace(/[\\`*_[\]<>&~#]/g, '\\$&');
+
+/**
+ * notes.md for `notes`, as readNotesSource gives them: each note's heading links to its part of the picture on the
+ * page at `pageUrl`, so it opens there from GitHub too. A note with no part yet has a plain heading, which the build
+ * explains.
+ */
+export function writeNotesSource({ intro, items }, pageUrl) {
+  const notes = items.map(({ title, region, text }) => {
+    const words = literal(title.trim());
+    const heading = region ? `## [${words}](${pageUrl}#xywh=${region.x},${region.y},${region.w},${region.h})` : `## ${words}`;
+    return [heading, text.trim()].filter(Boolean).join('\n\n');
+  });
+  return `${[intro.trim(), ...notes].filter(Boolean).join('\n\n')}\n`;
 }

@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { missingFiles } from '../../lib/service.js';
 import { parseConfig } from '../../lib/config.js';
+import { readNotesSource } from '../../lib/notes.js';
 import { inspect, makeImage, makePhonePhoto, makeVariant } from '../support/fixtures.js';
 import { schemaProblems, schemaUnavailable } from '../support/schema.js';
 import { browse, commit, deploy, git, run, templateCopy, until, zoomToFullResolution } from '../support/harness.js';
@@ -604,6 +605,7 @@ suite('a visitor shares the part of the picture they have zoomed into', () => {
 
 suite('a museum adds notes to its picture, which make a tour', () => {
   let site;
+  let source; // notes.md as written
   const notes = [
     ['The lighthouse', '600,300,400,700'],
     ['The boats', '2400,1800,900,500'],
@@ -619,7 +621,8 @@ suite('a museum adds notes to its picture, which make a tour', () => {
     const repo = await templateCopy();
     await copyFile(await makeImage(4000, 3000), join(repo, 'content/harbour.tif'));
     const text = notes.map(([title, region]) => `## [${title}](https://example.github.io/my-image/?viewer=openseadragon#xywh=${region})\n\nAbout ${title.toLowerCase()}.\n`);
-    await writeFile(join(repo, 'content/notes.md'), `Three things to look for.\n\n${text.join('\n')}`);
+    source = `Three things to look for.\n\n${text.join('\n')}`;
+    await writeFile(join(repo, 'content/notes.md'), source);
     await commit(repo, 'A picture with notes');
     site = await deploy(repo);
     assert.equal(site.built, true, site.log);
@@ -738,6 +741,94 @@ suite('a museum adds notes to its picture, which make a tour', () => {
     await page.keyboard.press('Escape');
     assert.equal(await tour.count(), 0);
     assert.equal(await start.evaluate((element) => element === document.activeElement), true, 'focus goes back to Take the tour');
+    await close();
+  });
+
+  // The notes helper (notes.html), which writes notes.md for the site's owner.
+  const helper = async (on = site) => {
+    const opened = await open(on, 'notes.html', { device: { reducedMotion: 'reduce' } }); // so the page scrolls at once
+    const file = opened.page.getByRole('textbox', { name: 'notes.md' });
+    await file.waitFor();
+    await opened.page.locator('.openseadragon-canvas').first().waitFor();
+    await opened.page.waitForLoadState('networkidle');
+    return { ...opened, file, written: async () => readNotesSource(await file.inputValue()) };
+  };
+  const near = (region, [x, y, w, h], slack = 20) =>
+    Math.abs(region.x - x) <= slack && Math.abs(region.y - y) <= slack && Math.abs(region.w - w) <= slack && Math.abs(region.h - h) <= slack;
+
+  test('the notes helper starts from notes.md as written, and writes what reads back as the same notes', async () => {
+    const { page, problems, close, written } = await helper();
+    assert.deepEqual(await written(), readNotesSource(source));
+    assert.equal(await page.locator('.note-area').count(), 3, 'each note’s part is outlined on the picture');
+    assert.equal(await page.getByRole('alert').count(), 0);
+    assert.equal(await page.getByRole('link', { name: 'Open notes.md on GitHub' }).getAttribute('href'), 'https://github.com/example/my-image/edit/main/content/notes.md');
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('in the notes helper a note’s part is the part of the picture in view, or one drawn round on it', async () => {
+    const { page, problems, close, written } = await helper();
+    // The whole picture in view: once it has settled there, that is the part.
+    await page.getByRole('button', { name: 'Show the whole picture' }).click();
+    await until(async () => {
+      await page.getByRole('button', { name: 'Use the part in view for note 1' }).click();
+      return near((await written()).items[0].region, [0, 0, 4000, 3000], 0);
+    }, 'the whole picture to be the part of note 1');
+
+    // Drawn round the boats, outlined on the picture as note 2's part, it is the boats. Choosing to draw brings the
+    // picture back on screen, from wherever the note's button had scrolled the page.
+    await page.getByRole('button', { name: 'Draw it: note 1' }).click();
+    const boats = await page.locator('.note-area').nth(1).boundingBox();
+    const pane = await page.locator('.viewer').boundingBox();
+    assert.ok(pane.y >= -1 && pane.y + pane.height <= 901, `the picture is on screen to draw on: ${JSON.stringify(pane)}`);
+    await page.mouse.move(boats.x, boats.y);
+    await page.mouse.down();
+    await page.mouse.move(boats.x + boats.width / 2, boats.y + boats.height / 2, { steps: 5 });
+    await page.mouse.move(boats.x + boats.width, boats.y + boats.height, { steps: 5 });
+    await page.mouse.up();
+    const drawn = (await written()).items[0].region;
+    assert.ok(near(drawn, at(notes[1][1])), `drawn round the boats: ${JSON.stringify(drawn)}`);
+    assert.equal(await page.getByRole('button', { name: 'Stop drawing' }).count(), 0, 'one drag draws one part');
+
+    // A new note for the part in view, its title typed straight away.
+    await page.getByRole('button', { name: 'Add a note for the part in view' }).click();
+    await page.keyboard.type('The harbour');
+    const { items } = await written();
+    assert.deepEqual([items.length, items[3].title, items[3].region], [4, 'The harbour', { x: 0, y: 0, w: 4000, h: 3000 }]);
+    assert.equal(await page.getByRole('alert').count(), 0);
+    assert.deepEqual(problems, []);
+    await close();
+  });
+
+  test('in the notes helper notes can be put in another order and removed, and a mistake is explained', async () => {
+    const { page, close, written } = await helper();
+    const titles = async () => (await written()).items.map(({ title }) => title);
+    await page.getByRole('button', { name: 'Move note 3 up' }).click();
+    assert.deepEqual(await titles(), ['The lighthouse', 'A gull', 'The boats']);
+    await page.getByRole('button', { name: 'Remove note 1' }).click();
+    assert.deepEqual(await titles(), ['A gull', 'The boats']);
+
+    await page.getByRole('textbox', { name: 'Title' }).first().fill('');
+    assert.equal(await page.getByRole('alert').textContent(), 'Note 1 needs a title.');
+    await page.getByRole('textbox', { name: 'Title' }).first().fill('A gull');
+    await page.getByRole('textbox', { name: 'Text' }).first().fill('## Its wings\n\nWide.');
+    assert.match(await page.getByRole('alert').textContent(), /use ### for a heading within a note/);
+    await close();
+  });
+
+  test('on a site with no notes yet, the notes helper starts empty and links to where notes.md is made', async () => {
+    const plain = await deploy(await templateCopy().then(async (repo) => {
+      await copyFile(await makeImage(800, 600), join(repo, 'content/plain.tif'));
+      await commit(repo, 'A picture');
+      return repo;
+    }));
+    const { page, problems, close, written } = await helper(plain);
+    assert.deepEqual(await written(), { intro: '', items: [] });
+    assert.equal(await page.getByRole('link', { name: 'Make content/notes.md on GitHub' }).getAttribute('href'), 'https://github.com/example/my-image/new/main?filename=content/notes.md');
+    await page.getByRole('button', { name: 'Add a note for the part in view' }).click();
+    await page.keyboard.type('The middle');
+    assert.match(await page.getByRole('textbox', { name: 'notes.md' }).inputValue(), /^## \[The middle\]\(https:\/\/example\.github\.io\/my-image\/#xywh=0,0,800,600\)$/m);
+    assert.deepEqual(problems, []);
     await close();
   });
 

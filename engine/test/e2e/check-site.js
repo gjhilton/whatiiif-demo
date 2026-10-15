@@ -92,6 +92,16 @@ test('a shared link shows a picture that is published', async () => {
   assert.equal(await published('icon.png'), true, 'the icon browsers show for the page');
 });
 
+test('the notes helper opens with the site\'s notes, or none, ready to change', async () => {
+  const { notes } = await json('site.json');
+  const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: 'notes.html' });
+  await page.getByRole('textbox', { name: 'notes.md' }).waitFor();
+  assert.equal(await page.locator('.notes-list > li').count(), notes?.items.length ?? 0);
+  if (notes) assert.equal(await page.getByRole('alert').count(), 0, 'the notes as they are have nothing wrong with them');
+  assert.deepEqual(problems, []);
+  await close();
+});
+
 test('the settings helper opens with the site\'s settings, ready to copy', async () => {
   const { page, problems, close } = await browse(browser, { siteUrl, fileFor, query: 'settings.html' });
   const file = page.getByRole('textbox', { name: 'whatiiif.toml' });

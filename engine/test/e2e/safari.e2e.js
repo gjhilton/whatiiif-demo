@@ -100,3 +100,17 @@ test('on an iPhone, the settings helper works', async () => {
   assert.deepEqual(problems, []);
   await close();
 });
+
+test('on an iPhone, the notes helper adds a note for the part of the picture on screen', async () => {
+  const { page, problems, close } = await open('notes.html', { device: devices['iPhone 15'] });
+  const file = page.getByRole('textbox', { name: 'notes.md' });
+  await file.waitFor();
+  await page.locator('.openseadragon-canvas').first().waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Add a note for the part in view' }).tap();
+  await page.getByRole('textbox', { name: 'Title' }).fill('The whole harbour');
+  assert.match(await file.inputValue(), /^## \[The whole harbour\]\(.*#xywh=\d+,\d+,\d+,\d+\)$/m);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no sideways scrolling');
+  assert.deepEqual(problems, []);
+  await close();
+});

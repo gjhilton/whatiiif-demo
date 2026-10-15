@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The screenshots in the README: the demo's picture, published by this working tree's template, in light and dark,
-// the settings helper part-way through being filled in, and the notes demo on its tour. The Live workflow runs this
+// the settings helper part-way through being filled in, and the notes demo on its tour and in its notes helper. The Live workflow runs this
 // on a Mac after every change, once both demos are published, and commits any that changed; by hand:
 //
 //   node engine/test/support/readme-screenshots.js
@@ -81,6 +81,18 @@ await shoot('notes-demo.png', {
     await page.getByRole('button', { name: 'Take the tour' }).click();
     await page.waitForTimeout(4500); // the viewer moves to the lighthouse, and its outline fades
     await page.evaluate(() => scrollTo(0, 0)); // the title in the picture too, above the tour
+  },
+});
+await shoot('notes-helper.png', {
+  query: 'notes.html',
+  size: { width: 1280, height: 900 },
+  act: async (page) => {
+    await page.getByRole('button', { name: 'Show note 1' }).click();
+    await page.waitForTimeout(2500); // the picture moves to the lighthouse
+    await page.evaluate(() => {
+      scrollTo(0, 0);
+      document.activeElement.blur(); // no focus ring in the picture
+    });
   },
 });
 await browser.close();
