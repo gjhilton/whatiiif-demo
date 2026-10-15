@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 import { expectedRequests } from '../../lib/service.js';
 import { schemaProblems, schemaUnavailable } from '../support/schema.js';
 import { browse, until, zoomToFullResolution } from '../support/harness.js';
+import { published as onSite } from '../support/published.js';
 
 const siteUrl = process.env.E2E_SITE_URL?.replace(/\/+$/, '');
 const dist = process.env.E2E_DIST;
@@ -20,20 +21,8 @@ if (!siteUrl) throw new Error('Set E2E_SITE_URL to the address of the site to ch
 const fileFor = dist && ((path) => join(dist, path));
 const json = async (path) => JSON.parse(dist ? await readFile(join(dist, path), 'utf8') : await (await fetch(`${siteUrl}/${path}`)).text());
 
-/**
- * Whether a file is published. Over the network a connection now and then times out among the thousand or so
- * requests a big picture needs, so a request that fails without an answer is tried again; a 404 is an answer.
- */
-async function published(path) {
-  if (dist) return readFile(join(dist, path)).then(() => true, () => false);
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return (await fetch(`${siteUrl}/${path}`, { method: 'HEAD' })).ok;
-    } catch (error) {
-      if (attempt === 3) throw new Error(`${path} could not be reached: ${error.cause?.code ?? error.message}`);
-    }
-  }
-}
+/** Whether a file is published: in the folder, or on the live site, asked again as support/published.js says. */
+const published = (path) => (dist ? readFile(join(dist, path)).then(() => true, () => false) : onSite(`${siteUrl}/${path}`));
 
 let browser;
 before(async () => {
