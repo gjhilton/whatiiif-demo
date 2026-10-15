@@ -13,7 +13,7 @@ import { parseConfig } from '../../lib/config.js';
 import { readNotesSource } from '../../lib/notes.js';
 import { inspect, makeImage, makePhonePhoto, makeVariant } from '../support/fixtures.js';
 import { schemaProblems, schemaUnavailable } from '../support/schema.js';
-import { browse, commit, deploy, git, run, templateCopy, until, zoomToFullResolution } from '../support/harness.js';
+import { browse, commit, deploy, git, repo as template, run, templateCopy, until, zoomToFullResolution } from '../support/harness.js';
 import { tempDir } from '../support/tmp.js';
 
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
@@ -54,6 +54,9 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
         '[[metadata]]',
         'label = "Source"',
         'value = "https://archives.example.org/collections/harbour-views/1890/plate-17"',
+        '',
+        '[publish]',
+        'footer = false',
       ].join('\n'),
     );
     await writeFile(join(repo, 'content/description.md'), '## About this view\n\nTaken from the *north* pier, by [the lighthouse](#xywh=200,300,400,500).\n');
@@ -333,6 +336,15 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     await close();
   });
 
+  test('with the footer switched off, the foot of the page says nothing of WhatIIIF', async () => {
+    const { page, close } = await open(site);
+    await page.locator('.openseadragon-container').first().waitFor();
+    await page.locator('.details').waitFor();
+    assert.equal(await page.locator('.made-with').count(), 0);
+    assert.equal(await page.getByText(/Published with/).count(), 0);
+    await close();
+  });
+
   test('the settings helper starts from the settings as they are, and writes a file the build accepts, saying what is wrong when it is not', async () => {
     const { page, problems, close } = await open(site, 'settings.html');
     const file = page.getByRole('textbox', { name: 'whatiiif.toml' });
@@ -355,6 +367,14 @@ suite('a photographer uploads a phone photo on github.com and fills in every set
     assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Harbour at night');
     assert.match(await file.inputValue(), /^language = "cy"\ntitle = "Harbour at night"$/m);
     await page.getByRole('textbox', { name: 'Language of your texts' }).fill('en');
+
+    // The footer, switched off in this site's settings, is switched on again by ticking it, which is the default.
+    const footer = page.getByRole('checkbox', { name: 'Say “Published with WhatIIIF” at the foot of the page' });
+    assert.equal(await footer.isChecked(), false);
+    assert.match(await file.inputValue(), /^\[publish\]\nfooter = false$/m);
+    await footer.check();
+    assert.doesNotMatch(await file.inputValue(), /footer/);
+    await footer.uncheck();
 
     const size = page.getByRole('textbox', { name: 'Real size' });
     await size.fill('big');
@@ -560,6 +580,21 @@ suite('a visitor shares the part of the picture they have zoomed into', () => {
       await close();
     });
   }
+
+  test('the foot of the page says it was published with WhatIIIF, and which version, linking to WhatIIIF; an embedded picture does not', async () => {
+    const version = (await readFile(join(template, 'engine/VERSION'), 'utf8')).trim();
+    const { page, problems, close } = await open(site, '?viewer=openseadragon');
+    const footer = page.locator('footer.made-with');
+    await footer.waitFor();
+    assert.equal(await footer.textContent(), `Published with WhatIIIF v${version}`);
+    assert.equal(await footer.getByRole('link', { name: 'WhatIIIF' }).getAttribute('href'), 'https://github.com/gjhilton/WhatIIIF');
+    assert.deepEqual(problems, []);
+    await close();
+    const embedded = await open(site, '?embed');
+    await embedded.page.locator('.credit').waitFor();
+    assert.equal(await embedded.page.locator('.made-with').count(), 0);
+    await embedded.close();
+  });
 
   test('a link to a region outlines that region for a moment, so whoever opens it sees what was meant', async () => {
     const { page, close } = await open(site, '?viewer=openseadragon#xywh=2000,1500,500,400');

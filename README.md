@@ -108,6 +108,8 @@ Click **Commit changes** and the site rebuilds itself. For a longer description,
   ink = "#222222"   # text, lines, and the button that is selected
   ```
 
+- **The footer:** a small line at the foot of the page says "Published with WhatIIIF" and which version, linking to
+  WhatIIIF. To leave it out, write `footer = false` under `[publish]`, or untick it in the settings helper.
 - Every setting is explained in [the template's own copy of the file](https://github.com/gjhilton/WhatIIIF/blob/main/content/whatiiif.toml),
   which may list settings that are newer than your copy.
 
