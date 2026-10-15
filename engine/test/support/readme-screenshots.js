@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { browse, commit, deploy, repo, templateCopy } from './harness.js';
+import { looksDifferent } from './looks-different.js';
 
 const DEMO = 'gjhilton/whatiiif-demo';
 const PICTURE = 'Concentric circles.png';
@@ -31,19 +32,6 @@ async function demoSite(demo, files) {
   return built;
 }
 let site = await demoSite(DEMO, [PICTURE]);
-
-/** Whether two PNGs look different: a different size, or more than a few pixels clearly changed. */
-async function looksDifferent(png, file) {
-  const pixels = (input) => sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const [now, before] = await Promise.all([pixels(png), pixels(file).catch(() => undefined)]);
-  if (!before || now.info.width !== before.info.width || now.info.height !== before.info.height) return true;
-  let changed = 0;
-  for (let i = 0; i < now.data.length; i += 4) {
-    const apart = Math.max(...[0, 1, 2].map((c) => Math.abs(now.data[i + c] - before.data[i + c])));
-    if (apart > 24) changed++;
-  }
-  return changed > 16;
-}
 
 const written = [];
 const browser = await chromium.launch();
