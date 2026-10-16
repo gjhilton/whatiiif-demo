@@ -41,9 +41,15 @@ test(`the Update workflow offers ${latest} as a pull request that leaves content
   // Written by the previous release's update.sh, from before the project was called WhatIIIF, or after.
   assert.match(offer?.title ?? '', new RegExp(`^Update (whatiiif|WhatIIIF) to ${latest.replace(/^v/, '').replaceAll('.', '\\.')}$`));
   assert.match(offer.body, /Your `content\/` is untouched/);
-  // ci.yml and live.yml run only in the template, so they are not passed on. The wording is the previous release's.
-  const workflows = ['.github/workflows', ':!.github/workflows/ci.yml', ':!.github/workflows/live.yml'];
-  const workflowsChanged = (await run('git', ['diff', '--quiet', previous, latest, '--', ...workflows], { cwd: template })).code !== 0;
+  // Workflows that run only in the template, marked "whatiiif: template only" (and ci.yml and live.yml, from before
+  // there was a marker), are not passed on, as update.sh leaves them out; nor is one the release no longer has. The
+  // wording is the previous release's.
+  const { stdout: changed } = await run('git', ['diff', '--name-only', previous, latest, '--', '.github/workflows'], { cwd: template });
+  let workflowsChanged = false;
+  for (const file of changed.split('\n').filter((name) => name && !/\/(ci|live)\.yml$/.test(name))) {
+    const now = await run('git', ['show', `${latest}:${file}`], { cwd: template });
+    if (now.code === 0 && !now.stdout.startsWith('# whatiiif: template only')) workflowsChanged = true;
+  }
   assert.equal(/Workflow files changed upstream|\*\*Copy by hand:\*\*/.test(offer.body), workflowsChanged, 'the pull request says whether workflow files need copying by hand');
   const files = (await gh('pr', 'diff', String(offer.number), '-R', trial.repository, '--name-only')).split('\n');
   assert.ok(files.includes('engine/VERSION'), files.join(', '));
