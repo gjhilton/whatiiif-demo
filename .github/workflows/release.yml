@@ -1,5 +1,7 @@
-# whatiiif: template only. Copies call publish.yml and offer-update.yml at the v0 tag; publishing a release moves
-# that tag to it, so every copy runs the released steps from then on.
+# whatiiif: template only. Copies call publish.yml and offer-update.yml at the tag of their major version (v1 for
+# 1.x). A release made by hand moves that tag to it, by the rule a release made on merging does (.github/release.sh
+# point): not for a pre-release, and never back from a later release. A release made on merging, by Live's release
+# job, starts no workflow, and moves the tag itself.
 name: Release
 
 on:
@@ -16,13 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Point the v0 tag (vMAJOR) at this release
+      - name: Point the tag of its major version (v1 for 1.x) at this release, unless it is on a later one
+        run: bash .github/release.sh point "$TAG"
         env:
           TAG: ${{ github.event.release.tag_name }}
-        run: |
-          major=${TAG%%.*}
-          git tag -f "$major" "$TAG"
-          if ! git push -f origin "refs/tags/$major"; then
-            echo "::error title=$major still points at the previous release::Copies run the steps at $major, so move it by hand: git fetch --tags && git tag -f $major $TAG && git push -f origin refs/tags/$major"
-            exit 1
-          fi
+          GH_TOKEN: ${{ github.token }}

@@ -4,10 +4,10 @@ name: CI
 
 on:
   pull_request:
-    paths: ['engine/**', 'package*.json', '.github/workflows/ci.yml']
+    paths: ['engine/**', 'package*.json', '.github/**']
   push:
     branches: [main]
-    paths: ['engine/**', 'package*.json', '.github/workflows/ci.yml']
+    paths: ['engine/**', 'package*.json', '.github/**']
 
 permissions:
   contents: read

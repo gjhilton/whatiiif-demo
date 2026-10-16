@@ -1,8 +1,10 @@
 # whatiiif: template only. Once a week: updates every package to the newest version its range in package.json
 # allows, checks the template still passes its tests, and offers the change as one pull request, listing any newer
-# major versions, which need a person. (A dependabot.yml would be copied into every site made from the template,
-# and open pull requests there for packages its Update workflow looks after; security fixes come from Dependabot's
-# security updates, a setting of this repository alone.)
+# major versions, which need a person. When the packages sites install change, the pull request raises engine/VERSION
+# to the next patch, and merging it releases that version, its description the release's notes; a change only to those
+# for developing WhatIIIF, which sites never install, is no new version. (A dependabot.yml would be copied into every
+# site made from the template, and open pull requests there for packages its Update workflow looks after; security
+# fixes come from Dependabot's security updates, a setting of this repository alone.)
 name: Dependencies
 
 on:
@@ -28,7 +30,8 @@ jobs:
       - name: Update every package within its range
         id: update
         run: |
-          npm ls --depth=0 --json > "$RUNNER_TEMP/before.json" || true
+          npm ls --depth=0 --json > "$RUNNER_TEMP/all-before.json" || true
+          npm ls --depth=0 --omit=dev --json > "$RUNNER_TEMP/sites-before.json" || true
           npm update
           if git diff --quiet -- package.json package-lock.json; then
             echo "Every package is already the newest its range allows."
@@ -48,18 +51,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          npm ls --depth=0 --json > "$RUNNER_TEMP/after.json" || true
-          changed=$(node -e '
-            const read = (file) => { try { return JSON.parse(require("fs").readFileSync(file, "utf8")).dependencies ?? {}; } catch { return {}; } };
-            const [before, after] = process.argv.slice(1).map(read);
-            for (const [name, { version }] of Object.entries(after)) {
-              if (before[name]?.version !== version) console.log(`- ${name} ${before[name]?.version ?? "(new)"} → ${version}`);
-            }' "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json")
+          npm ls --depth=0 --json > "$RUNNER_TEMP/all-after.json" || true
+          npm ls --depth=0 --omit=dev --json > "$RUNNER_TEMP/sites-after.json" || true
+          # The packages that changed, of all of them, or of those sites install, as a list.
+          changes() {
+            node -e '
+              const read = (file) => { try { return JSON.parse(require("fs").readFileSync(file, "utf8")).dependencies ?? {}; } catch { return {}; } };
+              const [before, after] = process.argv.slice(1).map(read);
+              for (const [name, { version }] of Object.entries(after)) {
+                if (before[name]?.version !== version) console.log(`- ${name} ${before[name]?.version ?? "(new)"} → ${version}`);
+              }' "$RUNNER_TEMP/$1-before.json" "$RUNNER_TEMP/$1-after.json"
+          }
+          # What whoever merges this needs to know is a comment: the description becomes the release's notes.
+          comment="Every package updated to the newest version its range in package.json allows, with the packages they use:"$'\n\n'"$(changes all)"
+          comment+=$'\n\n'"Typecheck, unit tests and browser journeys passed with them. GitHub starts no CI for a pull request a workflow opens: close and reopen this one to run all of CI, the screenshot tests included."
           majors=$(npm outdated || true)
-          body="Every package updated to the newest version its range in package.json allows, with the packages they use:"$'\n\n'"$changed"
-          body+=$'\n\n'"Typecheck, unit tests and browser journeys passed with them. GitHub starts no CI for a pull request a workflow opens: close and reopen this one to run all of CI, the screenshot tests included."
           if [[ -n "$majors" ]]; then
-            body+=$'\n\n'"Newer versions outside the ranges, which need a person:"$'\n\n```\n'"$majors"$'\n```'
+            comment+=$'\n\n'"Newer versions outside the ranges, which need a person:"$'\n\n```\n'"$majors"$'\n```'
+          fi
+          # A change to what sites install is a new version: the next patch, released on merging.
+          if [[ -n "$(bash .github/release.sh changed HEAD)" ]]; then
+            next=$(bash .github/release.sh next)
+            echo "$next" > engine/VERSION
+            body="## For you"$'\n\n'"The packages your site is built with, brought up to date:"$'\n\n'"$(changes sites)"
+            comment+=$'\n\n'"Merging this releases $(cat engine/VERSION)."
+          else
+            body="Only packages for developing WhatIIIF changed, which sites never install: no new version."
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -71,3 +88,4 @@ jobs:
           else
             gh pr create --title "Update dependencies" --body "$body" --head dependencies
           fi
+          gh pr comment dependencies --body "$comment"

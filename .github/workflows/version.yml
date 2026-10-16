@@ -1,0 +1,21 @@
+# whatiiif: template only. Checks a pull request's version: one that changes what sites get must raise
+# engine/VERSION, and merging it releases that version (Live's release job, .github/release.sh). One that changes
+# nothing sites get (the README, tests, these workflows) needs no new version.
+name: Version
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    if: github.event.repository.is_template
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # and the tags
+      - name: A change to what sites get raises engine/VERSION
+        run: bash .github/release.sh check "origin/${{ github.base_ref }}"
