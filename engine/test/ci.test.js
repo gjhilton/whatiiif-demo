@@ -921,6 +921,8 @@ test('releasing runs first in Live, so the demos and checks see the release; pul
   assert.match(await workflow('dependencies.yml'), /engine\/VERSION/, 'an update of the packages sites get is a new version too');
   // The tests of .github/release.sh are in engine/test: CI runs them when it changes too.
   assert.equal((await workflow('ci.yml')).match(/paths: \[[^\]]*'\.github\/\*\*'/g)?.length, 2);
+  // So are the tests of the documents, which check their links.
+  for (const path of ["'README\\.md'", "'docs\\/\\*\\*'"]) assert.equal((await workflow('ci.yml')).match(new RegExp(`paths: \\[[^\\]]*${path}`, 'g'))?.length, 2, path);
   // Releasing is the template's, as the Version check is: not the demos', whose variables a template of one's own may
   // not have.
   for (const name of ['release', 'released']) assert.match(job(live, name), /^ {4}if: github\.event\.repository\.is_template$/m, name);
@@ -944,7 +946,7 @@ test('the trials in new repositories made from the template are run by hand, not
   const text = await workflow('live.yml');
   assert.doesNotMatch(text, /\n  trial:|npm run test:live\n|LIVE_TRIAL_TOKEN/);
   assert.match(text, /run by hand, with `npm run test:live`/);
-  assert.match(await read(join(template, 'DEVELOPING.md')), /Run them before every\s+release/);
+  assert.match(await read(join(template, 'docs/DEVELOPING.md')), /Run them before every\s+release/);
 });
 
 test('after each change, the Live workflow publishes the template to both demos, the plain one and the one with notes', async () => {

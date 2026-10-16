@@ -1,4 +1,4 @@
-// Every state of the page a visitor can meet, and the settings helper, checked against WCAG 2.1 AA by axe, the
+// Every state of the page a visitor can meet, and the settings helper, checked against WCAG 2.2 AA by axe, the
 // checker browsers' own accessibility tools use. A site with every setting and two languages, so nothing is missed.
 import { suite, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ after(() => browser?.close());
 
 /** What axe finds wrong, as "rule: what is wrong (where)" lines; empty when nothing is. */
 async function problemsIn(page) {
-  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   return violations.flatMap(({ id, help, nodes }) => nodes.map(({ target }) => `${id}: ${help} (${target.join(' ')})`));
 }
 

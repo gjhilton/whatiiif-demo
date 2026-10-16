@@ -11,7 +11,7 @@
 # - released: fails unless everything sites get on main is in the release of engine/VERSION, and the tag sites call
 #   the shared steps at (v1 for 1.x) points at it.
 # The trials in new repositories made from the template (engine/test/live) are run by hand, with `npm run test:live`:
-# see DEVELOPING.md. Releasing is the template's: in a copy of it, which is not a template and has no DEMO_REPOSITORY,
+# see docs/DEVELOPING.md. Releasing is the template's: in a copy of it, which is not a template and has no DEMO_REPOSITORY,
 # nothing here runs.
 name: Live
 
